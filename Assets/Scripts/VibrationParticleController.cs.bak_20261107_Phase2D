@@ -1,0 +1,119 @@
+using UnityEngine;
+
+/// <summary>
+/// SEFPRO — Vibration Dust Effect (Phase 2C Redesign)
+/// Drives two wing-mounted ParticleSystems to create a dense, suspended refractory mixture dust.
+/// Continuously emits baseline dust at Level 0 (vibration OFF) and scales emission and agitation
+/// with the vibration knob's selected level (Levels 1 to 4).
+/// Reads XRSteppedKnob.StepLevel each frame; does not modify VibroEffect or XRSteppedKnob.
+/// </summary>
+[RequireComponent(typeof(ParticleSystem))]
+public class VibrationParticleController : MonoBehaviour
+{
+    [Header("Knob Reference")]
+    [Tooltip("The Main_Vibration_Frequency_Knob XRSteppedKnob component.")]
+    [SerializeField] private XRSteppedKnob _knob;
+
+    [Header("Particle Systems")]
+    [Tooltip("Left wing ParticleSystem (this GameObject). Assigned automatically on Awake.")]
+    [SerializeField] private ParticleSystem _leftWingPS;
+    [Tooltip("Right wing ParticleSystem — VibrationDust_Right.")]
+    [SerializeField] private ParticleSystem _rightWingPS;
+
+    [Header("Emission Settings (Phase 2C Target Rates)")]
+    [Tooltip("Emission rate per particle system at each knob level (Level 0 = 30 baseline).")]
+    [SerializeField] private float[] _emissionRates = { 30f, 50f, 80f, 120f, 170f };
+    [Tooltip("Maximum rate of change for emission transitions (particles/sec^2).")]
+    [SerializeField] private float _slewRate = 80f;
+
+    [Header("Agitation Settings")]
+    [Tooltip("Minimum noise turbulence multiplier at Level 0 (gentle baseline suspension).")]
+    [SerializeField] private float _minNoiseMultiplier = 0.5f;
+    [Tooltip("Maximum noise turbulence multiplier at Level 4 (vigorous vibration agitation).")]
+    [SerializeField] private float _maxNoiseMultiplier = 1.6f;
+
+    [Header("Runtime State")]
+    [SerializeField] private float _currentRate = 30f;
+    [SerializeField] private int _currentLevel = 0;
+
+    public float CurrentRate => _currentRate;
+    public int CurrentLevel => _currentLevel;
+
+    // -------------------------------------------------------------------------
+
+    private void Awake()
+    {
+        if (_leftWingPS == null)
+            _leftWingPS = GetComponent<ParticleSystem>();
+    }
+
+    private void Start()
+    {
+        EnsurePlaying(_leftWingPS);
+        EnsurePlaying(_rightWingPS);
+        _currentRate = _emissionRates != null && _emissionRates.Length > 0 ? _emissionRates[0] : 30f;
+        ApplyRate(_currentRate, 0);
+    }
+
+    private void OnEnable()
+    {
+        EnsurePlaying(_leftWingPS);
+        EnsurePlaying(_rightWingPS);
+    }
+
+    private void Update()
+    {
+        _currentLevel = ResolveLevel();
+        float targetRate = ResolveTargetRate(_currentLevel);
+
+        _currentRate = Mathf.MoveTowards(_currentRate, targetRate, _slewRate * Time.deltaTime);
+        ApplyRate(_currentRate, _currentLevel);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private int ResolveLevel()
+    {
+        if (_knob == null) return 0;
+        return Mathf.Clamp(_knob.StepLevel, 0, _emissionRates.Length - 1);
+    }
+
+    private float ResolveTargetRate(int level)
+    {
+        if (_emissionRates == null || _emissionRates.Length == 0) return 30f;
+        return _emissionRates[Mathf.Clamp(level, 0, _emissionRates.Length - 1)];
+    }
+
+    private void ApplyRate(float rate, int level)
+    {
+        float normLevel = _emissionRates.Length > 1 ? (float)level / (_emissionRates.Length - 1) : 0f;
+        float noiseMult = Mathf.Lerp(_minNoiseMultiplier, _maxNoiseMultiplier, normLevel);
+
+        UpdateSystem(_leftWingPS, rate, noiseMult);
+        UpdateSystem(_rightWingPS, rate, noiseMult);
+    }
+
+    private static void EnsurePlaying(ParticleSystem ps)
+    {
+        if (ps == null) return;
+        if (!ps.isPlaying)
+            ps.Play();
+    }
+
+    private static void UpdateSystem(ParticleSystem ps, float rate, float noiseMult)
+    {
+        if (ps == null) return;
+
+        var emission = ps.emission;
+        emission.enabled = true;
+        emission.rateOverTime = rate;
+
+        var noise = ps.noise;
+        noise.strengthMultiplier = noiseMult;
+
+        if (!ps.isPlaying)
+            ps.Play();
+    }
+}

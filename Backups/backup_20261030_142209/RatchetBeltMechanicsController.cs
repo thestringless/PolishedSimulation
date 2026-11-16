@@ -1,0 +1,864 @@
+using UnityEngine;
+using Obi;
+
+namespace Sefpro.RatchetBelt
+{
+    /// <summary>
+    /// Phase B1.1 mechanics controller for the Sefpro industrial ratchet belt simulation.
+    /// Handles interactive mouse drag for handle and both J-hooks, angular hinge limits,
+    /// discrete ratchet tooth advancement, smooth rate-limited webbing reel-in,
+    /// gradual reversible webbing payout / release, continuous mandrel rotation coupling,
+    /// pawl animation, runtime HUD overlay, and test state reset.
+    /// </summary>
+    [DisallowMultipleComponent]
+    public class RatchetBeltMechanicsController : MonoBehaviour
+    {
+        public enum StrokeState
+        {
+            ReadyAtRest,
+            Advancing,
+            ToothClickedWaitingReturn,
+            Returning
+        }
+
+        public enum DragTarget
+        {
+            None,
+            Handle,
+            FixedHook,
+            AdjustableHook
+        }
+
+        [Header("Mechanical Transforms")]
+        [Tooltip("Transform of the ratchet handle (hinged on the mandrel axle).")]
+        public Transform handleTransform;
+
+        [Tooltip("Transform of the mandrel / spool drum.")]
+        public Transform mandrelTransform;
+
+        [Tooltip("Transform of the frame locking pawl.")]
+        public Transform pawlTransform;
+
+        [Tooltip("Optional camera used for mouse interaction raycasting.")]
+        public Camera interactionCamera;
+
+        [Header("J-Hook Transforms")]
+        [Tooltip("Transform of the fixed-side J-hook.")]
+        public Transform fixedHookTransform;
+
+        [Tooltip("Transform of the adjustable-side J-hook.")]
+        public Transform adjustableHookTransform;
+
+        [Tooltip("Transform of the fixed hook stitch visual.")]
+        public Transform stitchFixTransform;
+
+        [Tooltip("Transform of the adjustable hook stitch visual.")]
+        public Transform stitchAdjTransform;
+
+        [Header("Obi Webbing References")]
+        [Tooltip("Adjustable webbing actor whose rest length is shortened during ratcheting.")]
+        public ObiRope adjustableRope;
+
+        [Tooltip("Fixed webbing actor (monitored to ensure it remains unchanged).")]
+        public ObiRope fixedRope;
+
+        [Tooltip("Obi rope cursor used to modify adjustable webbing rest length at the mandrel entrance.")]
+        public ObiRopeCursor ropeCursor;
+
+        [Header("Angular & Mechanical Limits")]
+        [Tooltip("Minimum handle angle at resting upright position (degrees).")]
+        public float minHandleAngle = 0.0f;
+
+        [Tooltip("Maximum handle angle at the forward power stroke stop (degrees).")]
+        public float maxHandleAngle = 65.0f;
+
+        [Tooltip("Angle threshold where handle is considered returned to rest.")]
+        public float returnRestThreshold = 5.0f;
+
+        [Tooltip("Angle threshold where a power stroke is completed and clicks.")]
+        public float strokeCompletionThreshold = 55.0f;
+
+        [Tooltip("Angular advance of the mandrel per tooth click (degrees).")]
+        public float toothAngleIncrement = 30.0f;
+
+        [Tooltip("Physical rest length shortening per tooth click (meters). 0.010m = 10mm.")]
+        public float shorteningPerTooth = 0.010f;
+
+        [Tooltip("Maximum pawl lift angle when riding over a gear tooth (degrees).")]
+        public float maxPawlLiftAngle = 8.0f;
+
+        [Header("Hook Movement Limits (Belt Local Space)")]
+        [Tooltip("Allowed local X range for fixed J-hook relative to belt chassis (keeps it away from buckle).")]
+        public Vector2 fixedHookXLimits = new Vector2(-0.90f, -0.25f);
+
+        [Tooltip("Allowed local X range for adjustable J-hook relative to belt chassis (keeps it away from cargo box).")]
+        public Vector2 adjHookXLimits = new Vector2(0.52f, 1.20f);
+
+        [Tooltip("Allowed local Y range for J-hooks relative to belt chassis.")]
+        public Vector2 hookYLimits = new Vector2(-0.05f, 0.20f);
+
+        [Tooltip("Allowed local Z range for J-hooks relative to belt chassis.")]
+        public Vector2 hookZLimits = new Vector2(-0.05f, 0.05f);
+
+        [Header("Smooth Reel-In & Release Dynamics")]
+        [Tooltip("Rate at which webbing rest length is smoothly reeled in (meters per second).")]
+        public float shorteningReelSpeed = 0.08f;
+
+        [Tooltip("Rate at which webbing rest length is paid out during release (meters per second).")]
+        public float releaseSpeed = 0.08f;
+
+        [Tooltip("Visual smoothing speed for mandrel rotation (degrees per second).")]
+        public float mandrelRotationSpeed = 240.0f;
+
+        [Header("UI Configuration")]
+        [Tooltip("When enabled, renders the desktop GUI HUD overlay in Play Mode.")]
+        public bool showHUD = true;
+
+        [Tooltip("Enables legacy screen-space mouse dragging. Set to false when pointer-driven DesktopInteractionManager is active.")]
+        public bool enableLegacyMouseDrag = false;
+
+        // Mechanical Events
+        public System.Action<int> OnToothClicked;
+        public System.Action<int> OnStepReleased;
+        public System.Action OnMechanicsReset;
+
+        [Header("Runtime State (Read Only)")]
+        [SerializeField] private float currentHandleAngle = 0.0f;
+        [SerializeField] private int accumulatedTeeth = 0;
+        [SerializeField] private float accumulatedMandrelAngle = 0.0f;
+        [SerializeField] private float displayedMandrelAngle = 0.0f;
+        [SerializeField] private float targetShortening = 0.0f;
+        [SerializeField] private float totalShortening = 0.0f;
+        [SerializeField] private StrokeState currentState = StrokeState.ReadyAtRest;
+        [SerializeField] private DragTarget currentDragTarget = DragTarget.None;
+        [SerializeField] private bool isReleasing = false;
+
+        private Quaternion initialHandleRot;
+        private Quaternion initialMandrelRot;
+        private Quaternion initialPawlRot;
+
+        private Vector3 initialFixedHookPos;
+        private Quaternion initialFixedHookRot;
+        private Vector3 initialAdjustableHookPos;
+        private Quaternion initialAdjustableHookRot;
+        private Vector3 initialStitchFixPos;
+        private Vector3 initialStitchAdjPos;
+
+        private float initialAdjustableRestLength = -1f;
+        private float initialFixedRestLength = -1f;
+
+        private Vector3 dragStartMousePos;
+        private float dragStartHandleAngle;
+        private Plane currentDragPlane;
+        private Vector3 dragPlaneOffset;
+
+        // Public accessors for validation & UI
+        public float CurrentHandleAngle => currentHandleAngle;
+        public int AccumulatedTeeth => accumulatedTeeth;
+        public float AccumulatedMandrelAngle => accumulatedMandrelAngle;
+        public float DisplayedMandrelAngle => displayedMandrelAngle;
+        public float TargetShortening => targetShortening;
+        public float TotalShortening => totalShortening;
+        public StrokeState CurrentState => currentState;
+        public DragTarget CurrentDrag => currentDragTarget;
+        public bool IsReleasing => isReleasing;
+        public float InitialAdjustableRestLength => initialAdjustableRestLength;
+        public float InitialFixedRestLength => initialFixedRestLength;
+        public float CurrentAdjustableRestLength => adjustableRope != null ? adjustableRope.restLength : 0f;
+        public float CurrentFixedRestLength => fixedRope != null ? fixedRope.restLength : 0f;
+        public Vector3 InitialFixedHookPos => initialFixedHookPos;
+        public Vector3 InitialAdjustableHookPos => initialAdjustableHookPos;
+
+        private void Awake()
+        {
+            AutoBindReferences();
+
+            if (interactionCamera == null)
+                interactionCamera = Camera.main;
+
+            CaptureInitialTransforms();
+        }
+
+        public void AutoBindReferences()
+        {
+            Transform[] allTransforms = FindObjectsByType<Transform>(FindObjectsSortMode.None);
+            foreach (Transform t in allTransforms)
+            {
+                if (handleTransform == null && t.name == "Ratchet_Handle")
+                    handleTransform = t;
+                else if (mandrelTransform == null && t.name == "Mandrel")
+                    mandrelTransform = t;
+                else if (pawlTransform == null && t.name == "Ratchet_Pawl")
+                    pawlTransform = t;
+                else if (fixedHookTransform == null && t.name == "J_Hook_Fixed")
+                    fixedHookTransform = t;
+                else if (adjustableHookTransform == null && t.name == "J_Hook_Adjustable")
+                    adjustableHookTransform = t;
+                else if (stitchFixTransform == null && t.name == "Stitch_Fixed_Hook")
+                    stitchFixTransform = t;
+                else if (stitchAdjTransform == null && t.name == "Stitch_Adj_Hook")
+                    stitchAdjTransform = t;
+            }
+
+            if (adjustableRope == null || fixedRope == null)
+            {
+                ObiRope[] ropes = FindObjectsByType<ObiRope>(FindObjectsSortMode.None);
+                foreach (ObiRope r in ropes)
+                {
+                    if (adjustableRope == null && r.gameObject.name.Contains("Adjustable"))
+                        adjustableRope = r;
+                    else if (fixedRope == null && r.gameObject.name.Contains("Fixed"))
+                        fixedRope = r;
+                }
+            }
+        }
+
+        private void Start()
+        {
+            InitializeObiReferences();
+        }
+
+        public void CaptureInitialTransforms()
+        {
+            if (handleTransform != null)
+                initialHandleRot = handleTransform.localRotation;
+
+            if (mandrelTransform != null)
+                initialMandrelRot = mandrelTransform.localRotation;
+
+            if (pawlTransform != null)
+                initialPawlRot = pawlTransform.localRotation;
+
+            if (fixedHookTransform != null)
+            {
+                initialFixedHookPos = fixedHookTransform.position;
+                initialFixedHookRot = fixedHookTransform.rotation;
+            }
+
+            if (adjustableHookTransform != null)
+            {
+                initialAdjustableHookPos = adjustableHookTransform.position;
+                initialAdjustableHookRot = adjustableHookTransform.rotation;
+            }
+
+            if (stitchFixTransform != null)
+                initialStitchFixPos = stitchFixTransform.position;
+
+            if (stitchAdjTransform != null)
+                initialStitchAdjPos = stitchAdjTransform.position;
+        }
+
+        public void InitializeObiReferences()
+        {
+            if (adjustableRope != null)
+            {
+                adjustableRope.stretchingScale = 1.0f;
+                var rend = adjustableRope.GetComponent<ObiRopeExtrudedRenderer>();
+                if (rend != null) rend.thicknessScale = 66.66667f;
+            }
+
+            if (fixedRope != null)
+            {
+                fixedRope.stretchingScale = 1.0f;
+                var rend = fixedRope.GetComponent<ObiRopeExtrudedRenderer>();
+                if (rend != null) rend.thicknessScale = 66.66667f;
+            }
+
+            if (adjustableRope != null && initialAdjustableRestLength < 0f)
+                initialAdjustableRestLength = adjustableRope.restLength;
+
+            if (fixedRope != null && initialFixedRestLength < 0f)
+                initialFixedRestLength = fixedRope.restLength;
+
+            if (adjustableRope != null && ropeCursor == null)
+            {
+                ropeCursor = adjustableRope.GetComponent<ObiRopeCursor>();
+                if (ropeCursor == null)
+                    ropeCursor = adjustableRope.gameObject.AddComponent<ObiRopeCursor>();
+
+                ropeCursor.cursorMu = 0.0f;
+                ropeCursor.direction = true;
+            }
+        }
+
+        private void FixedUpdate()
+        {
+            // 1. Smoothly reel in rest length via ObiRopeCursor across physics frames
+            if (ropeCursor != null && totalShortening < targetShortening)
+            {
+                float remaining = targetShortening - totalShortening;
+                float maxStep = shorteningReelSpeed * Time.fixedDeltaTime;
+                float step = Mathf.Min(remaining, maxStep);
+                ropeCursor.ChangeLength(-step);
+                totalShortening += step;
+            }
+            // 2. Smoothly pay out rest length during release / loosening
+            else if (ropeCursor != null && totalShortening > targetShortening)
+            {
+                float excess = totalShortening - targetShortening;
+                float maxStep = releaseSpeed * Time.fixedDeltaTime;
+                float step = Mathf.Min(excess, maxStep);
+                ropeCursor.ChangeLength(+step);
+                totalShortening -= step;
+
+                if (totalShortening < 0.0001f)
+                    totalShortening = 0.0f;
+            }
+        }
+
+        private void Update()
+        {
+            // Ensure initial rope lengths are cached once solver initializes
+            if (initialAdjustableRestLength <= 0f && adjustableRope != null && adjustableRope.isLoaded)
+                initialAdjustableRestLength = adjustableRope.restLength;
+
+            if (initialFixedRestLength <= 0f && fixedRope != null && fixedRope.isLoaded)
+                initialFixedRestLength = fixedRope.restLength;
+
+            HandleInput();
+            UpdateContinuousRelease();
+            UpdateVisualTransforms();
+        }
+
+        private void HandleInput()
+        {
+            // Reset hotkey
+            if (Input.GetKeyDown(KeyCode.R))
+            {
+                ResetState();
+                return;
+            }
+
+            // Single discrete power stroke test hotkey (P)
+            if (Input.GetKeyDown(KeyCode.P))
+            {
+                ExecuteDiscretePowerStroke();
+                return;
+            }
+
+            // Release hotkey (L): tap for 1-tooth step release, or hold for continuous payout
+            if (Input.GetKeyDown(KeyCode.L))
+            {
+                TriggerStepRelease();
+            }
+            if (Input.GetKey(KeyCode.L))
+            {
+                isReleasing = true;
+            }
+            if (Input.GetKeyUp(KeyCode.L))
+            {
+                isReleasing = false;
+            }
+
+            // Keyboard handle swing (Left/Right Arrow)
+            float manualSpeed = 90.0f * Time.deltaTime;
+            if (Input.GetKey(KeyCode.RightArrow))
+            {
+                SetHandleAngle(currentHandleAngle + manualSpeed);
+            }
+            else if (Input.GetKey(KeyCode.LeftArrow))
+            {
+                SetHandleAngle(currentHandleAngle - manualSpeed);
+            }
+
+            // Mouse interaction
+            HandleMouseInteraction();
+        }
+
+        private void UpdateContinuousRelease()
+        {
+            if (isReleasing && targetShortening > 0.0f)
+            {
+                // Gradually decrement target shortening toward zero
+                targetShortening = Mathf.MoveTowards(targetShortening, 0.0f, releaseSpeed * Time.deltaTime);
+
+                // Keep accumulated teeth and mandrel angle aligned with target
+                accumulatedMandrelAngle = (targetShortening / shorteningPerTooth) * toothAngleIncrement;
+                accumulatedTeeth = Mathf.CeilToInt(targetShortening / shorteningPerTooth - 0.001f);
+                if (accumulatedTeeth < 0) accumulatedTeeth = 0;
+
+                if (targetShortening <= 0.0001f)
+                {
+                    targetShortening = 0.0f;
+                    accumulatedTeeth = 0;
+                    accumulatedMandrelAngle = 0.0f;
+                    isReleasing = false;
+                    Debug.Log("[RatchetBelt] Webbing fully released back to baseline rest length.");
+                }
+            }
+        }
+
+        private void HandleMouseInteraction()
+        {
+            if (!enableLegacyMouseDrag || interactionCamera == null)
+                return;
+
+            if (Input.GetMouseButtonDown(0))
+            {
+                Ray ray = interactionCamera.ScreenPointToRay(Input.mousePosition);
+                RaycastHit hit;
+
+                // Priority 1: Check if clicking directly on either J-Hook collider
+                if (Physics.Raycast(ray, out hit, 15.0f))
+                {
+                    if (fixedHookTransform != null && (hit.transform == fixedHookTransform || hit.transform.IsChildOf(fixedHookTransform)))
+                    {
+                        currentDragTarget = DragTarget.FixedHook;
+                        SetupDragPlane(fixedHookTransform.position, ray);
+                        return;
+                    }
+
+                    if (adjustableHookTransform != null && (hit.transform == adjustableHookTransform || hit.transform.IsChildOf(adjustableHookTransform)))
+                    {
+                        currentDragTarget = DragTarget.AdjustableHook;
+                        SetupDragPlane(adjustableHookTransform.position, ray);
+                        return;
+                    }
+
+                    if (handleTransform != null && (hit.transform == handleTransform || hit.transform.IsChildOf(handleTransform)))
+                    {
+                        currentDragTarget = DragTarget.Handle;
+                        dragStartMousePos = Input.mousePosition;
+                        dragStartHandleAngle = currentHandleAngle;
+                        return;
+                    }
+                }
+
+                // Priority 2: Screen-space proximity check for Handle / Buckle (free cursor mode only)
+                if (Cursor.lockState != CursorLockMode.Locked && handleTransform != null)
+                {
+                    Vector3 screenPoint = interactionCamera.WorldToScreenPoint(handleTransform.position);
+                    if (Vector2.Distance(Input.mousePosition, screenPoint) < 180f)
+                    {
+                        currentDragTarget = DragTarget.Handle;
+                        dragStartMousePos = Input.mousePosition;
+                        dragStartHandleAngle = currentHandleAngle;
+                        return;
+                    }
+                }
+
+                // Priority 3: Screen-space proximity check for J-Hooks (free cursor mode only)
+                if (Cursor.lockState != CursorLockMode.Locked && fixedHookTransform != null)
+                {
+                    Vector3 fixScreen = interactionCamera.WorldToScreenPoint(fixedHookTransform.position);
+                    if (Vector2.Distance(Input.mousePosition, fixScreen) < 90f)
+                    {
+                        currentDragTarget = DragTarget.FixedHook;
+                        SetupDragPlane(fixedHookTransform.position, ray);
+                        return;
+                    }
+                }
+
+                if (Cursor.lockState != CursorLockMode.Locked && adjustableHookTransform != null)
+                {
+                    Vector3 adjScreen = interactionCamera.WorldToScreenPoint(adjustableHookTransform.position);
+                    if (Vector2.Distance(Input.mousePosition, adjScreen) < 90f)
+                    {
+                        currentDragTarget = DragTarget.AdjustableHook;
+                        SetupDragPlane(adjustableHookTransform.position, ray);
+                        return;
+                    }
+                }
+            }
+
+            if (Input.GetMouseButton(0) && currentDragTarget != DragTarget.None)
+            {
+                Ray ray = interactionCamera.ScreenPointToRay(Input.mousePosition);
+
+                switch (currentDragTarget)
+                {
+                    case DragTarget.Handle:
+                        float deltaPixels = Input.mousePosition.x - dragStartMousePos.x;
+                        float angleDelta = (deltaPixels / Screen.width) * 180.0f;
+                        SetHandleAngle(dragStartHandleAngle + angleDelta);
+                        break;
+
+                    case DragTarget.FixedHook:
+                        if (currentDragPlane.Raycast(ray, out float enterFix))
+                        {
+                            Vector3 targetPos = ray.GetPoint(enterFix) + dragPlaneOffset;
+                            MoveFixedHook(targetPos);
+                        }
+                        break;
+
+                    case DragTarget.AdjustableHook:
+                        if (currentDragPlane.Raycast(ray, out float enterAdj))
+                        {
+                            Vector3 targetPos = ray.GetPoint(enterAdj) + dragPlaneOffset;
+                            MoveAdjustableHook(targetPos);
+                        }
+                        break;
+                }
+            }
+
+            if (Input.GetMouseButtonUp(0))
+            {
+                currentDragTarget = DragTarget.None;
+            }
+        }
+
+        private void SetupDragPlane(Vector3 worldPos, Ray ray)
+        {
+            // Planar dragging perpendicular to camera viewing direction
+            currentDragPlane = new Plane(-interactionCamera.transform.forward, worldPos);
+            if (currentDragPlane.Raycast(ray, out float enter))
+            {
+                dragPlaneOffset = worldPos - ray.GetPoint(enter);
+            }
+            else
+            {
+                dragPlaneOffset = Vector3.zero;
+            }
+        }
+
+        private Vector3 ClampHookPosition(Vector3 pos, Vector2 xLimits)
+        {
+            float cx = Mathf.Clamp(pos.x, xLimits.x, xLimits.y);
+            float cy = Mathf.Clamp(pos.y, hookYLimits.x, hookYLimits.y);
+            float cz = Mathf.Clamp(pos.z, hookZLimits.x, hookZLimits.y);
+            return new Vector3(cx, cy, cz);
+        }
+
+        /// <summary>
+        /// Moves the fixed J-hook to a target world position, clamping within belt-local bounds
+        /// and updating the associated stitch visual while keeping wraps intact.
+        /// </summary>
+        public void MoveFixedHook(Vector3 targetPos)
+        {
+            if (fixedHookTransform == null) return;
+
+            Transform parent = fixedHookTransform.parent;
+            Vector3 localTarget = parent != null ? parent.InverseTransformPoint(targetPos) : targetPos;
+            Vector3 clampedLocal = ClampHookPosition(localTarget, fixedHookXLimits);
+            Vector3 clampedWorld = parent != null ? parent.TransformPoint(clampedLocal) : clampedLocal;
+            Vector3 delta = clampedWorld - fixedHookTransform.position;
+
+            fixedHookTransform.position = clampedWorld;
+            fixedHookTransform.rotation = initialFixedHookRot;
+
+            if (stitchFixTransform != null && !stitchFixTransform.IsChildOf(fixedHookTransform))
+                stitchFixTransform.position += delta;
+        }
+
+        /// <summary>
+        /// Moves the adjustable J-hook to a target world position, clamping within belt-local bounds
+        /// and updating the associated stitch visual while keeping wraps intact.
+        /// </summary>
+        public void MoveAdjustableHook(Vector3 targetPos)
+        {
+            if (adjustableHookTransform == null) return;
+
+            Transform parent = adjustableHookTransform.parent;
+            Vector3 localTarget = parent != null ? parent.InverseTransformPoint(targetPos) : targetPos;
+            Vector3 clampedLocal = ClampHookPosition(localTarget, adjHookXLimits);
+            Vector3 clampedWorld = parent != null ? parent.TransformPoint(clampedLocal) : clampedLocal;
+            Vector3 delta = clampedWorld - adjustableHookTransform.position;
+
+            adjustableHookTransform.position = clampedWorld;
+            adjustableHookTransform.rotation = initialAdjustableHookRot;
+
+            if (stitchAdjTransform != null && !stitchAdjTransform.IsChildOf(adjustableHookTransform))
+                stitchAdjTransform.position += delta;
+        }
+
+        /// <summary>
+        /// Retrieves the world position of the first particle in the fixed hook wrap group.
+        /// </summary>
+        public Vector3 GetFixedHookWrapParticlePosition()
+        {
+            if (fixedRope != null && fixedRope.solver != null)
+            {
+                var atts = fixedRope.GetComponents<ObiParticleAttachment>();
+                foreach (var a in atts)
+                {
+                    if (a.particleGroup != null && a.particleGroup.name == "FixedHook_FullWrap" && a.particleGroup.Count > 0)
+                    {
+                        int pIdx = a.particleGroup.particleIndices[0];
+                        int sIdx = fixedRope.solverIndices[pIdx];
+                        return fixedRope.solver.transform.TransformPoint(fixedRope.solver.positions[sIdx]);
+                    }
+                }
+            }
+            return Vector3.zero;
+        }
+
+        /// <summary>
+        /// Retrieves the world position of the first particle in the adjustable hook wrap group.
+        /// </summary>
+        public Vector3 GetAdjHookWrapParticlePosition()
+        {
+            if (adjustableRope != null && adjustableRope.solver != null)
+            {
+                var atts = adjustableRope.GetComponents<ObiParticleAttachment>();
+                foreach (var a in atts)
+                {
+                    if (a.particleGroup != null && a.particleGroup.name == "AdjHook_FullWrap" && a.particleGroup.Count > 0)
+                    {
+                        int pIdx = a.particleGroup.particleIndices[0];
+                        int sIdx = adjustableRope.solverIndices[pIdx];
+                        return adjustableRope.solver.transform.TransformPoint(adjustableRope.solver.positions[sIdx]);
+                    }
+                }
+            }
+            return Vector3.zero;
+        }
+
+        /// <summary>
+        /// Sets the handle angle respecting mechanical limits, drives the pawl animation,
+        /// and updates the stroke state machine.
+        /// </summary>
+        public void SetHandleAngle(float angle)
+        {
+            float targetAngle = Mathf.Clamp(angle, minHandleAngle, maxHandleAngle);
+            currentHandleAngle = targetAngle;
+
+            // State Machine evaluation
+            if (currentState == StrokeState.ReadyAtRest)
+            {
+                if (currentHandleAngle > returnRestThreshold + 2.0f)
+                {
+                    currentState = StrokeState.Advancing;
+                }
+            }
+
+            if (currentState == StrokeState.Advancing)
+            {
+                if (currentHandleAngle >= strokeCompletionThreshold)
+                {
+                    TriggerToothClick();
+                    currentState = StrokeState.ToothClickedWaitingReturn;
+                }
+                else if (currentHandleAngle <= returnRestThreshold)
+                {
+                    currentState = StrokeState.ReadyAtRest;
+                }
+            }
+            else if (currentState == StrokeState.ToothClickedWaitingReturn)
+            {
+                if (currentHandleAngle < strokeCompletionThreshold - 5.0f)
+                {
+                    currentState = StrokeState.Returning;
+                }
+            }
+
+            if (currentState == StrokeState.Returning)
+            {
+                if (currentHandleAngle <= returnRestThreshold)
+                {
+                    currentState = StrokeState.ReadyAtRest;
+                }
+            }
+        }
+
+        /// <summary>
+        /// Triggers a discrete tooth advance: increments stroke count, rotates mandrel,
+        /// and shortens adjustable webbing rest length via ObiRopeCursor.
+        /// </summary>
+        public void TriggerToothClick()
+        {
+            accumulatedTeeth++;
+            accumulatedMandrelAngle += toothAngleIncrement;
+            targetShortening += shorteningPerTooth;
+
+            if (ropeCursor == null && adjustableRope != null)
+                ropeCursor = adjustableRope.GetComponent<ObiRopeCursor>();
+
+            OnToothClicked?.Invoke(accumulatedTeeth);
+
+            Debug.Log($"[RatchetBelt] Tooth Click #{accumulatedTeeth}! Mandrel Angle={accumulatedMandrelAngle}deg, Target Shortening={targetShortening * 1000f:F1}mm");
+        }
+
+        /// <summary>
+        /// Releases one tooth (10 mm) of webbing take-up, unwinding the mandrel smoothly.
+        /// </summary>
+        public void TriggerStepRelease()
+        {
+            if (targetShortening <= 0.0001f)
+            {
+                Debug.Log("[RatchetBelt] Belt is already at baseline rest length (cannot loosen further).");
+                return;
+            }
+
+            targetShortening = Mathf.Max(0.0f, targetShortening - shorteningPerTooth);
+            accumulatedMandrelAngle = (targetShortening / shorteningPerTooth) * toothAngleIncrement;
+            accumulatedTeeth = Mathf.CeilToInt(targetShortening / shorteningPerTooth - 0.001f);
+            if (accumulatedTeeth < 0) accumulatedTeeth = 0;
+
+            OnStepReleased?.Invoke(accumulatedTeeth);
+
+            Debug.Log($"[RatchetBelt] Step Release triggered: Remaining Teeth={accumulatedTeeth}, Target Shortening={targetShortening * 1000f:F1}mm");
+        }
+
+        /// <summary>
+        /// Fully releases all accumulated webbing shortening back to baseline rest length.
+        /// </summary>
+        public void TriggerFullRelease()
+        {
+            targetShortening = 0.0f;
+            accumulatedMandrelAngle = 0.0f;
+            accumulatedTeeth = 0;
+            isReleasing = false;
+            Debug.Log("[RatchetBelt] Full Release requested: Target Shortening set to 0.0mm.");
+        }
+
+        /// <summary>
+        /// Helper for automated testing and discrete keypresses: sweeps handle through a full power stroke and returns.
+        /// </summary>
+        public void ExecuteDiscretePowerStroke()
+        {
+            SetHandleAngle(maxHandleAngle);
+            SetHandleAngle(minHandleAngle);
+        }
+
+        /// <summary>
+        /// Visually updates the handle, mandrel, and pawl rotations based on mechanical state.
+        /// </summary>
+        public void UpdateVisualTransforms()
+        {
+            // 1. Handle rotation: rotates around local Vector3.up
+            if (handleTransform != null)
+            {
+                handleTransform.localRotation = initialHandleRot * Quaternion.AngleAxis(currentHandleAngle, Vector3.up);
+            }
+
+            // 2. Mandrel rotation: rotates smoothly around local Vector3.up to follow target angle
+            if (mandrelTransform != null)
+            {
+                displayedMandrelAngle = Mathf.MoveTowards(displayedMandrelAngle, accumulatedMandrelAngle, mandrelRotationSpeed * Time.deltaTime);
+                mandrelTransform.localRotation = initialMandrelRot * Quaternion.AngleAxis(displayedMandrelAngle, Vector3.up);
+            }
+
+            // 3. Pawl visual animation:
+            if (pawlTransform != null)
+            {
+                float pawlAngle = 0.0f;
+                if (currentState == StrokeState.Advancing)
+                {
+                    float t = Mathf.InverseLerp(returnRestThreshold, strokeCompletionThreshold, currentHandleAngle);
+                    pawlAngle = Mathf.Sin(t * Mathf.PI) * maxPawlLiftAngle;
+                }
+                pawlTransform.localRotation = initialPawlRot * Quaternion.AngleAxis(pawlAngle, Vector3.up);
+            }
+        }
+
+        /// <summary>
+        /// Resets the ratchet belt mechanics, hooks, and simulated webbing to pristine initial baseline.
+        /// </summary>
+        public void ResetState()
+        {
+            currentHandleAngle = minHandleAngle;
+            accumulatedTeeth = 0;
+            accumulatedMandrelAngle = 0.0f;
+            displayedMandrelAngle = 0.0f;
+            targetShortening = 0.0f;
+            currentState = StrokeState.ReadyAtRest;
+            currentDragTarget = DragTarget.None;
+            isReleasing = false;
+
+            if (handleTransform != null)
+                handleTransform.localRotation = initialHandleRot;
+
+            if (mandrelTransform != null)
+                mandrelTransform.localRotation = initialMandrelRot;
+
+            if (pawlTransform != null)
+                pawlTransform.localRotation = initialPawlRot;
+
+            // Restore J-Hook positions
+            if (fixedHookTransform != null && initialFixedHookPos != Vector3.zero)
+            {
+                fixedHookTransform.position = initialFixedHookPos;
+                fixedHookTransform.rotation = initialFixedHookRot;
+            }
+
+            if (adjustableHookTransform != null && initialAdjustableHookPos != Vector3.zero)
+            {
+                adjustableHookTransform.position = initialAdjustableHookPos;
+                adjustableHookTransform.rotation = initialAdjustableHookRot;
+            }
+
+            if (stitchFixTransform != null && initialStitchFixPos != Vector3.zero)
+                stitchFixTransform.position = initialStitchFixPos;
+
+            if (stitchAdjTransform != null && initialStitchAdjPos != Vector3.zero)
+                stitchAdjTransform.position = initialStitchAdjPos;
+
+            // Restore rest lengths
+            if (ropeCursor != null && adjustableRope != null && initialAdjustableRestLength > 0f)
+            {
+                float diff = initialAdjustableRestLength - adjustableRope.restLength;
+                if (Mathf.Abs(diff) > 0.0001f)
+                {
+                    ropeCursor.ChangeLength(diff);
+                }
+            }
+            totalShortening = 0.0f;
+            targetShortening = 0.0f;
+
+            OnMechanicsReset?.Invoke();
+
+            Debug.Log("[RatchetBelt] Mechanics, hooks, and webbing reset to initial state.");
+        }
+
+        private void OnGUI()
+        {
+            if (!showHUD) return;
+
+            const int pad = 12;
+            const int width = 380;
+            const int height = 310;
+
+            GUI.Box(new Rect(pad, pad, width, height), "<b>Sefpro Ratchet Belt Mechanics (Phase B1.1)</b>");
+
+            GUILayout.BeginArea(new Rect(pad + 10, pad + 25, width - 20, height - 35));
+
+            GUILayout.Label($"<b>Ratchet Teeth / Strokes:</b> <color=#ffff00>{accumulatedTeeth}</color>");
+            GUILayout.Label($"<b>Mandrel Rotation:</b> {displayedMandrelAngle:F1}° (Target: {accumulatedMandrelAngle:F1}°)");
+            GUILayout.Label($"<b>Handle Angle:</b> {currentHandleAngle:F1}° (Limits: {minHandleAngle:F0}°..{maxHandleAngle:F0}°)");
+            GUILayout.Label($"<b>Stroke State:</b> <color=#00ff88>{currentState}</color> | <b>Drag:</b> <color=#00ffff>{currentDragTarget}</color>");
+
+            float adjLen = adjustableRope != null ? adjustableRope.restLength : 0f;
+            float fixLen = fixedRope != null ? fixedRope.restLength : 0f;
+
+            GUILayout.Label($"<b>Adjustable Webbing Rest Length:</b> {adjLen:F3} m");
+            GUILayout.Label($"<b>Accumulated Shortening:</b> -{(totalShortening * 1000f):F1} mm (Target: -{(targetShortening * 1000f):F1} mm)");
+            GUILayout.Label($"<b>Fixed Webbing Rest Length:</b> {fixLen:F3} m (unchanged)");
+
+            string releaseStatus = isReleasing ? "<color=#ffff00>PAYING OUT / RELEASING...</color>" :
+                                   (totalShortening > 0.001f ? "<color=#00ff88>TENSIONED</color>" : "<color=#cccccc>FULLY RELEASED (REST)</color>");
+            GUILayout.Label($"<b>Reel Status:</b> {releaseStatus}");
+
+            GUILayout.Space(4);
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Release (1 Tooth) [L]", GUILayout.Height(24)))
+            {
+                TriggerStepRelease();
+            }
+            if (GUILayout.Button(isReleasing ? "Stop Release" : "Loosen / Release Belt", GUILayout.Height(24)))
+            {
+                isReleasing = !isReleasing;
+            }
+            if (GUILayout.Button("Full Release", GUILayout.Height(24)))
+            {
+                TriggerFullRelease();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.BeginHorizontal();
+            if (GUILayout.Button("Power Stroke [P/Space]", GUILayout.Height(22)))
+            {
+                ExecuteDiscretePowerStroke();
+            }
+            if (GUILayout.Button("Reset All [R]", GUILayout.Height(22)))
+            {
+                ResetState();
+            }
+            GUILayout.EndHorizontal();
+
+            GUILayout.Space(4);
+            GUILayout.Label("<i>Controls: Drag Handle to tighten. Drag Left/Right J-Hook to reposition.\n[L]: Loosen/Release | [P/Space]: Power Stroke | [R]: Reset</i>");
+
+            GUILayout.EndArea();
+        }
+    }
+}

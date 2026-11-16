@@ -1,0 +1,509 @@
+fileFormatVersion: 2
+guid: 101130591a79b405ca6a29e9174ed395
+ModelImporter:
+  serializedVersion: 24501
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: AC_Material
+    second: {fileID: 2100000, guid: e1b67b76162034a32a6a3ac923f23d2f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Circular_Ducts_Mat
+    second: {fileID: 2100000, guid: 15e182913db664989b08d7d623d25a52, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Double_Door_mat
+    second: {fileID: 2100000, guid: 3b9b31d79fb934f1488d5fc98ef81a41, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Double_Glass_Mat
+    second: {fileID: 2100000, guid: 54b3178b3d15d421c9d47ca392a3e3e8, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Exterior_Cladding_Mat
+    second: {fileID: 2100000, guid: 1a5f43f962f67455491fc09de73bd70f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Glass_Mat
+    second: {fileID: 2100000, guid: f7cd1fc6d0be94da290d958f1f156fc7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material
+    second: {fileID: 2100000, guid: fb8a4b3df774440bfa9c75afaf24ede2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Material.001
+    second: {fileID: 2100000, guid: dcc05d3f7a1774639bbae5ad65c84447, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Portable_Building_02_mat
+    second: {fileID: 2100000, guid: d95af8b0c8e824c74a0a31284fe3bd26, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Rectangular_Duct_Mat
+    second: {fileID: 2100000, guid: ed837b00d480b4a67b4507e76e1123bd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Roof_Ducts_Material
+    second: {fileID: 2100000, guid: 5e32b3a09df4f461597fdda10ebdbf02, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Roof_Mat
+    second: {fileID: 2100000, guid: 70252936cbee347bfa3c09a0b1e208db, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Single_Door_Metal_mat
+    second: {fileID: 2100000, guid: 1b0443cf70bd248588e3e8f4ab52a1f5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Single_Door_mat
+    second: {fileID: 2100000, guid: 1e04ca6882eca4527863d787e6255d74, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Stairs_Mat
+    second: {fileID: 2100000, guid: 5d147a10cfa864a7eb00f515802c1e25, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Trusses_Mat
+    second: {fileID: 2100000, guid: 3f34813bdb2db4e51971fe215165a2cd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wall_Mat
+    second: {fileID: 2100000, guid: d3f240376d38a4b7488638089532c5b2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: White_Mat
+    second: {fileID: 2100000, guid: aca31ded14dd649e5aed279fe89ad5ca, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Wires_Mat
+    second: {fileID: 2100000, guid: df87d2122e0b6421f80dcf4489a15760, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: corrugated_sheet_mat
+    second: {fileID: 2100000, guid: 2224ec444a95043fea04f788f61eb033, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: red
+    second: {fileID: 2100000, guid: 918880d7051394f9898a4bf9498043c4, type: 2}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: AC_Diffuse
+    second: {fileID: 2800000, guid: 1b7cf7e476c3542eba16ae455c121d0c, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: AC_Glossiness
+    second: {fileID: 2800000, guid: 28cceff32f7bf4f06b2a42283c3db201, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: AC_Normal
+    second: {fileID: 2800000, guid: d2ea7c80941e6451395332738bd3b2bc, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: AC_Specular
+    second: {fileID: 2800000, guid: 6adefcc0123f94c848041e9c2f92b7e1, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Circular_Ducts_Diffuse
+    second: {fileID: 2800000, guid: e16b0726af4df48a1ad9a636397ad36f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Circular_Ducts_Glossiness
+    second: {fileID: 2800000, guid: 5f1d9a04736f34332b5956417fc2b26c, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Circular_Ducts_Normal
+    second: {fileID: 2800000, guid: 800fc64bcbe0a4513b0e34843dab1583, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Circular_Ducts_Specular
+    second: {fileID: 2800000, guid: 7853329f2c1f04ab8a3c7ec4dcb921cc, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Double_Door_Diffuse
+    second: {fileID: 2800000, guid: d6299aa2b93dc4b4fb4722f6fc4027f2, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Double_Door_Glossiness
+    second: {fileID: 2800000, guid: f31dfdc6165504c73af608a9753d245f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Double_Door_Normal
+    second: {fileID: 2800000, guid: 977858f87236c4fc392b7ebf007d9003, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Double_Door_Specular
+    second: {fileID: 2800000, guid: dac48f95501ee45a4bce89b8d134e506, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Exterior_Cladding_Diffuse
+    second: {fileID: 2800000, guid: f700af4a7561247f9b5811b8310dcd12, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Exterior_Cladding_Glossiness
+    second: {fileID: 2800000, guid: d735186e845b44ca19a5a44e611d653a, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Exterior_Cladding_Specular
+    second: {fileID: 2800000, guid: 50917f1ac87b249b4884993c86f95e11, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Floor_Tiles_Diffuse
+    second: {fileID: 2800000, guid: 9706eafb70b6144e6b7e8fa105ab9372, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Floor_Tiles_Glossiness
+    second: {fileID: 2800000, guid: 68a864e30c4b94e118a0ed9ebfc5e9aa, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Floor_Tiles_Specular
+    second: {fileID: 2800000, guid: 5be2c0b3548244526a829d098a6daedd, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Glass_Diffuse
+    second: {fileID: 2800000, guid: ff321b80210bd413d885386238e96580, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Portable_Building_02_Diffuse
+    second: {fileID: 2800000, guid: 4b510210b5cc64304b1a331bd93bfa34, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Portable_Building_02_Glossiness
+    second: {fileID: 2800000, guid: d2c96f8df4e184dbbb3541e505afcfb2, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Portable_Building_02_Specular
+    second: {fileID: 2800000, guid: 105a2790bce4d41e0a1d5b12d2febe83, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Rect_Ducts_Diffuse
+    second: {fileID: 2800000, guid: e57e36cf680a1499f9e1ea29387b3569, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Rect_Ducts_Glossiness
+    second: {fileID: 2800000, guid: 170995590c14f489285ebadcd51921c4, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Rect_Ducts_Normal
+    second: {fileID: 2800000, guid: ef1786de351b5453fb0e9a720ebaa9c5, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Rect_Ducts_Specular
+    second: {fileID: 2800000, guid: 728179e2983554bb2b84ffc2248e7b6b, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Red_Single_Door_Diffuse
+    second: {fileID: 2800000, guid: fc8ba5813e0154e0495f8de20dc880b4, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Red_Single_Door_Glossiness
+    second: {fileID: 2800000, guid: 2dd379d6207c1430bb074798a0e067b6, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Red_Single_Door_Normal
+    second: {fileID: 2800000, guid: f8b07cc494d3f4cf1b2da65403721cb2, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Red_Single_Door_Specular
+    second: {fileID: 2800000, guid: 9b456ab10c3c64d308c4e4195ca96530, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Roof_Diffuse
+    second: {fileID: 2800000, guid: e77b0d8905a30471dab71a3570912c6b, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Roof_Ducts_Diffuse
+    second: {fileID: 2800000, guid: 8d93009c0d49b4b7bb9a405ec9c8d9f5, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Roof_Glossiness
+    second: {fileID: 2800000, guid: aa28c30eaf7e8406c80225c4505b2f82, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Roof_Specular
+    second: {fileID: 2800000, guid: 8b8daee005d244a749e10ea9d19c4a31, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Shutter_Diffuse
+    second: {fileID: 2800000, guid: f2f11c22b60f945efa9b37e6092218b9, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Shutter_Glossiness
+    second: {fileID: 2800000, guid: 855ff0abfd79a40e2abecaca4a464d47, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Shutter_Specular
+    second: {fileID: 2800000, guid: 90450462ebf034003bc67dcb9aaf5bf5, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Single_Metal_Diffuse
+    second: {fileID: 2800000, guid: 79756c77de1fc4ca3aa7a067bc9dec59, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Single_Metal_Glossiness
+    second: {fileID: 2800000, guid: a019d503a6f5a4dcca99ee8261a26768, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Single_Metal_Normal
+    second: {fileID: 2800000, guid: 33507d7c9b9c34d09adfb85951079651, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Single_Metal_Specular
+    second: {fileID: 2800000, guid: 5763856e0ec72473bba0fba245d91f4d, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Stair_Diffuse
+    second: {fileID: 2800000, guid: 8aa4dfb5ccf6843558c2bb7fcb2c2dd4, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Stair_Glossiness
+    second: {fileID: 2800000, guid: b1413cbc55b93477bb9017c0b2077b00, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Stair_Normal
+    second: {fileID: 2800000, guid: fb2d24270ea354a05b3d5ad00f1d960b, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Stair_Specular
+    second: {fileID: 2800000, guid: 557fa52a91d5140dca550737534dc3a7, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Trusses_Diffuse
+    second: {fileID: 2800000, guid: d90fd4df71d0e490b8aebfee49d30400, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Trusses_Glossiness
+    second: {fileID: 2800000, guid: 339ecd0b199094050970484dad2faf3d, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Trusses_Normal
+    second: {fileID: 2800000, guid: 9420999ded12b412bb293c8f4adc3d6c, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Trusses_Specular
+    second: {fileID: 2800000, guid: 6897f3bb7edfd4df69068d2dec2ab04e, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Walls_Diffuse
+    second: {fileID: 2800000, guid: de4b0fdd09ea5493a8ac5389481b7c1c, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wires_Diffuse
+    second: {fileID: 2800000, guid: d4e85df92959f44719eca27b8786be2f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wires_Glossiness
+    second: {fileID: 2800000, guid: 36c78b99a4ec24d79b05a5311edb389f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wires_Normal
+    second: {fileID: 2800000, guid: 0327ff7ba8c984422bd431cba17a7e87, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: Wires_Specular
+    second: {fileID: 2800000, guid: f338a5ba91a434376aae449325599bb4, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: corrugated_sheet_Diffuse
+    second: {fileID: 2800000, guid: 1c1deab547b264bdba0bd969c15a14de, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: corrugated_sheet_Glossiness
+    second: {fileID: 2800000, guid: bc8be56db020b431d8e7c9cc32288e2d, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: corrugated_sheet_Normal
+    second: {fileID: 2800000, guid: 3184af5f1d7874126aee94c7460d08f1, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: corrugated_sheet_Specular
+    second: {fileID: 2800000, guid: 5627cb1f9ef944004ac208cbcfdee7b1, type: 3}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+    searchTexturesGlobally: 0
+  animations:
+    legacyGenerateAnimations: 4
+    bakeSimulation: 0
+    resampleCurves: 1
+    optimizeGameObjects: 0
+    removeConstantScaleCurves: 0
+    motionNodeName: 
+    animationImportErrors: 
+    animationImportWarnings: 
+    animationRetargetingWarnings: 
+    animationDoRetargetingWarnings: 0
+    importAnimatedCustomProperties: 0
+    importConstraints: 0
+    animationCompression: 1
+    animationRotationError: 0.5
+    animationPositionError: 0.5
+    animationScaleError: 0.5
+    animationWrapMode: 0
+    extraExposedTransformPaths: []
+    extraUserProperties: []
+    clipAnimations: []
+    isReadable: 0
+  meshes:
+    lODScreenPercentages: []
+    globalScale: 1
+    meshCompression: 0
+    addColliders: 0
+    useSRGBMaterialColor: 1
+    sortHierarchyByName: 1
+    importPhysicalCameras: 1
+    importVisibility: 1
+    importBlendShapes: 1
+    importCameras: 1
+    importLights: 1
+    nodeNameCollisionStrategy: 1
+    fileIdsGeneration: 2
+    swapUVChannels: 0
+    generateSecondaryUV: 0
+    useFileUnits: 1
+    keepQuads: 0
+    weldVertices: 1
+    bakeAxisConversion: 0
+    preserveHierarchy: 0
+    skinWeightsMode: 0
+    maxBonesPerVertex: 4
+    minBoneWeight: 0.001
+    optimizeBones: 1
+    generateMeshLods: 0
+    meshLodGenerationFlags: 0
+    maximumMeshLod: -1
+    importUVs: -1
+    importVertexColors: 1
+    meshOptimizationFlags: -1
+    indexFormat: 0
+    secondaryUVAngleDistortion: 8
+    secondaryUVAreaDistortion: 15.000001
+    secondaryUVHardAngle: 88
+    secondaryUVMarginMethod: 1
+    secondaryUVMinLightmapResolution: 40
+    secondaryUVMinObjectScale: 1
+    secondaryUVPackMargin: 4
+    useFileScale: 1
+    strictVertexDataChecks: 0
+  tangentSpace:
+    normalSmoothAngle: 60
+    normalImportMode: 0
+    tangentImportMode: 3
+    normalCalculationMode: 4
+    legacyComputeAllNormalsFromSmoothingGroupsWhenMeshHasBlendShapes: 0
+    blendShapeNormalImportMode: 1
+    normalSmoothingSource: 0
+    calculateBlendshapeNormalsDeltaFromImportedNormals: 0
+  referencedClips: []
+  importAnimation: 1
+  humanDescription:
+    serializedVersion: 3
+    human: []
+    skeleton: []
+    armTwist: 0.5
+    foreArmTwist: 0.5
+    upperLegTwist: 0.5
+    legTwist: 0.5
+    armStretch: 0.05
+    legStretch: 0.05
+    feetSpacing: 0
+    globalScale: 1
+    rootMotionBoneName: 
+    hasTranslationDoF: 0
+    hasExtraRoot: 0
+    skeletonHasParents: 1
+  lastHumanDescriptionAvatarSource: {instanceID: 0}
+  autoGenerateAvatarMappingIfUnspecified: 1
+  animationType: 2
+  humanoidOversampling: 1
+  avatarSetup: 0
+  addHumanoidExtraRootOnlyWhenUsingAvatar: 1
+  importBlendShapeDeformPercent: 1
+  remapMaterialsIfMaterialImportModeIsNone: 0
+  additionalBone: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

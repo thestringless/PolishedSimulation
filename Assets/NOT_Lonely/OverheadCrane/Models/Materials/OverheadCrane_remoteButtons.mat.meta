@@ -1,0 +1,15 @@
+fileFormatVersion: 2
+guid: b1234fd23075aad46830c3d59eb1071c
+NativeFormatImporter:
+  externalObjects: {}
+  mainObjectFileID: 2100000
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 190645
+  packageName: HQ Overhead Crane (Interactive)
+  packageVersion: 1.0
+  assetPath: Assets/NOT_Lonely/OverheadCrane/Models/Materials/OverheadCrane_remoteButtons.mat
+  uploadId: 420897

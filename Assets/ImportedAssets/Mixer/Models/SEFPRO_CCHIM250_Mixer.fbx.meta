@@ -1,0 +1,339 @@
+fileFormatVersion: 2
+guid: d443a5591bd84472aa076bbaa9dcd795
+ModelImporter:
+  serializedVersion: 24501
+  internalIDToNameTable: []
+  externalObjects:
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Bar_TanWood
+    second: {fileID: 2100000, guid: 294d30188ec8544299b9ed703765d872, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Blue_Foot_Dusty
+    second: {fileID: 2100000, guid: 3339b996e69a046479e2996beb1846e7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Blue_Industrial
+    second: {fileID: 2100000, guid: 9c700aebf662d460e9b6bad8ea52597e, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Btn_DarkGreen
+    second: {fileID: 2100000, guid: 85b1f1bb0108f491183d0d1cc4104d06, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Btn_Red
+    second: {fileID: 2100000, guid: 84b5193fe120d493fa695f91eddda2d7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Btn_Yellow
+    second: {fileID: 2100000, guid: 4b376fea5557b48aab4c86059bc4b01a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Cast_Iron
+    second: {fileID: 2100000, guid: a4eaf2d06627f4744b8002a2924850a9, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Control_Box_Grey
+    second: {fileID: 2100000, guid: a9750efeb7c064a98a16144872748ca8, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Cupboard_Win_Lower
+    second: {fileID: 2100000, guid: e0b94f49633344bc5b862e7ecbc4fb6a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Cupboard_Win_Upper
+    second: {fileID: 2100000, guid: 0bfa573fc4fc949a48273f5a74f10d1f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Duct_Grey
+    second: {fileID: 2100000, guid: 005c6d3712d80465780c80641231ad9a, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Galvanized_Pipe
+    second: {fileID: 2100000, guid: ae482183d88664187983f13886b50554, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Hazard_Stripes
+    second: {fileID: 2100000, guid: adaf18be8daf14d72846b8ed0264d96f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Hood_WhiteGrey
+    second: {fileID: 2100000, guid: 321faebe615c741d3a25bc0844be4422, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Hopper_DustyBeige
+    second: {fileID: 2100000, guid: dc8392fde340942de95cbc2f79e1c8a7, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Internal_Bronze
+    second: {fileID: 2100000, guid: 81866a2f4dc2444f2a0df50a9a7f64c2, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_LCD_Screen
+    second: {fileID: 2100000, guid: c4eb36a8d996b48a29330229a2d15e94, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_LED_Green_Lit
+    second: {fileID: 2100000, guid: 66b30bc1c3ff34c5eaa62d86d7694c7c, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_LED_Red_Lit
+    second: {fileID: 2100000, guid: 5f8a35f41f1d649c69b716d2ab02f8dd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Rebar_Steel
+    second: {fileID: 2100000, guid: 4e0ad2f8620ff422c92945832fe8e628, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Red_Frame
+    second: {fileID: 2100000, guid: 0c302cf6aab064cb19b13a10e7c512bd, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Red_Pan
+    second: {fileID: 2100000, guid: c00c4bc97c9e04032b457bbb0297ee20, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Red_Perforated_Mesh
+    second: {fileID: 2100000, guid: 515f4ed1e4a884366ba92a95388eadfe, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Residue_Dark
+    second: {fileID: 2100000, guid: 8e5e7d738dd6c407081bdce8fcfbf371, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Rubber_Black
+    second: {fileID: 2100000, guid: 32572f87d95a7443aa44c0ae3037f80d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Sign_CCHIM250_Real
+    second: {fileID: 2100000, guid: ded75ce9b83384998b081b199947e049, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Sign_PPE_Real
+    second: {fileID: 2100000, guid: b50e6c14f2a844157b108899a315cbbe, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Stainless_Dusty
+    second: {fileID: 2100000, guid: d547b939af46742dcb5fc461ec50dc23, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Tag_PPE_Cupboard
+    second: {fileID: 2100000, guid: 7e06f53e47bfe412d97495479186bc0d, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Teal_Trolley
+    second: {fileID: 2100000, guid: 945eda96e42c44ff2abb0a07c142536f, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Warning_Decal
+    second: {fileID: 2100000, guid: 6873b4a5de4b8434a88ac217e9c3e015, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_WhiteBox_Bright
+    second: {fileID: 2100000, guid: 17c250276416f4498a32ba78f25ce1f6, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: Mat_Yellow_Safety
+    second: {fileID: 2100000, guid: cc5859c7a85c545c9bc7d4987fb33a0b, type: 2}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: blue_foot_dusty_albedo
+    second: {fileID: 2800000, guid: 56637fbfed9f74d2db5cabbb4fcccd3a, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: blue_industrial_albedo
+    second: {fileID: 2800000, guid: fc9458508c6bd42179730262e34f5e7e, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: ccm250_plate
+    second: {fileID: 2800000, guid: 6efe333f6e555488f8b458f3931d8f29, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: hazard_stripes
+    second: {fileID: 2800000, guid: 36bca43d06431437e9bda25d7dddf900, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: ppe_cupboard_tag
+    second: {fileID: 2800000, guid: 92bd15244ea3844e6807a195d6011f00, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: ppe_safety_sign
+    second: {fileID: 2800000, guid: 8aaf5065bc40a425ab484300fb389c32, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: red_pan_unity_albedo
+    second: {fileID: 2800000, guid: 356ea4c8a9d6d431cabbce413366cb4e, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: red_perforated_rgba
+    second: {fileID: 2800000, guid: b3934263ec84243d9a4eb2236ba7013f, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: teal_trolley_albedo
+    second: {fileID: 2800000, guid: b7fb3b7a9f49443fd9f8891ab2833bbd, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: warning_decal
+    second: {fileID: 2800000, guid: 8d76073f4fe234088b830141ae5abb67, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: window_lower_rgba
+    second: {fileID: 2800000, guid: 25bde76ba7ff74575acf22ac025e2a65, type: 3}
+  - first:
+      type: UnityEngine:Texture2D
+      assembly: UnityEngine.CoreModule
+      name: window_upper_rgba
+    second: {fileID: 2800000, guid: dc440a67c901a41f58ff0c5430153acd, type: 3}
+  materials:
+    materialImportMode: 2
+    materialName: 0
+    materialSearch: 1
+    materialLocation: 1
+    searchTexturesGlobally: 0
+  animations:
+    legacyGenerateAnimations: 4
+    bakeSimulation: 0
+    resampleCurves: 1
+    optimizeGameObjects: 0
+    removeConstantScaleCurves: 0
+    motionNodeName: 
+    animationImportErrors: 
+    animationImportWarnings: 
+    animationRetargetingWarnings: 
+    animationDoRetargetingWarnings: 0
+    importAnimatedCustomProperties: 0
+    importConstraints: 0
+    animationCompression: 1
+    animationRotationError: 0.5
+    animationPositionError: 0.5
+    animationScaleError: 0.5
+    animationWrapMode: 0
+    extraExposedTransformPaths: []
+    extraUserProperties: []
+    clipAnimations: []
+    isReadable: 0
+  meshes:
+    lODScreenPercentages: []
+    globalScale: 1
+    meshCompression: 0
+    addColliders: 0
+    useSRGBMaterialColor: 1
+    sortHierarchyByName: 1
+    importPhysicalCameras: 1
+    importVisibility: 1
+    importBlendShapes: 1
+    importCameras: 1
+    importLights: 1
+    nodeNameCollisionStrategy: 1
+    fileIdsGeneration: 2
+    swapUVChannels: 0
+    generateSecondaryUV: 0
+    useFileUnits: 1
+    keepQuads: 0
+    weldVertices: 1
+    bakeAxisConversion: 0
+    preserveHierarchy: 0
+    skinWeightsMode: 0
+    maxBonesPerVertex: 4
+    minBoneWeight: 0.001
+    optimizeBones: 1
+    generateMeshLods: 0
+    meshLodGenerationFlags: 0
+    maximumMeshLod: -1
+    importUVs: -1
+    importVertexColors: 1
+    meshOptimizationFlags: -1
+    indexFormat: 0
+    secondaryUVAngleDistortion: 8
+    secondaryUVAreaDistortion: 15.000001
+    secondaryUVHardAngle: 88
+    secondaryUVMarginMethod: 1
+    secondaryUVMinLightmapResolution: 40
+    secondaryUVMinObjectScale: 1
+    secondaryUVPackMargin: 4
+    useFileScale: 1
+    strictVertexDataChecks: 0
+  tangentSpace:
+    normalSmoothAngle: 60
+    normalImportMode: 0
+    tangentImportMode: 3
+    normalCalculationMode: 4
+    legacyComputeAllNormalsFromSmoothingGroupsWhenMeshHasBlendShapes: 0
+    blendShapeNormalImportMode: 1
+    normalSmoothingSource: 0
+    calculateBlendshapeNormalsDeltaFromImportedNormals: 0
+  referencedClips: []
+  importAnimation: 1
+  humanDescription:
+    serializedVersion: 3
+    human: []
+    skeleton: []
+    armTwist: 0.5
+    foreArmTwist: 0.5
+    upperLegTwist: 0.5
+    legTwist: 0.5
+    armStretch: 0.05
+    legStretch: 0.05
+    feetSpacing: 0
+    globalScale: 1
+    rootMotionBoneName: 
+    hasTranslationDoF: 0
+    hasExtraRoot: 0
+    skeletonHasParents: 1
+  lastHumanDescriptionAvatarSource: {instanceID: 0}
+  autoGenerateAvatarMappingIfUnspecified: 1
+  animationType: 2
+  humanoidOversampling: 1
+  avatarSetup: 0
+  addHumanoidExtraRootOnlyWhenUsingAvatar: 1
+  importBlendShapeDeformPercent: 1
+  remapMaterialsIfMaterialImportModeIsNone: 0
+  additionalBone: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: 421a638798fad864aba91d5de9841721
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 190645
+  packageName: HQ Overhead Crane (Interactive)
+  packageVersion: 1.0
+  assetPath: Assets/NOT_Lonely/OverheadCrane/Scripts/NL_RemoteButton.cs
+  uploadId: 420897

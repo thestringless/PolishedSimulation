@@ -1,0 +1,438 @@
+using System;
+using UnityEngine;
+
+/// <summary>
+/// SEFPRO — Vibration Dust Effect (Phase 2H: Granular Dust Size Refinement)
+/// 
+/// Controls the visual response of the deposited refractory powder on the vibrating platform:
+/// 1. Primary settled granular refractory dust overlay (SettledDust_Overlay):
+///    - Follows Vibrating_Rubber_Surface 1:1 in local space.
+///    - Scaled to realistic 6-10 mm granular particle dimensions.
+///    - Stationary at Level 0; vibrates with the platform at Levels 1–4.
+/// 2. Secondary vibration-responsive loose mineral grains (VibrationDust_Left / VibrationDust_Right):
+///    - Scaled to matching 6-10 mm granular particle dimensions.
+///    - Localized strictly on and around the 4 accumulation drifts per wing.
+///    - Full 6-stage physical hop cycle:
+///        1. Start resting on surface (y = 0.002m, v = 0)
+///        2. Lift away from surface (impulse driven by vibration frequency and deck speed)
+///        3. Reach small peak height (parabolic trajectory under g = 9.81 m/s^2)
+///        4. Descend naturally
+///        5. Land back on surface
+///        6. Settle until next vibration impulse
+///    - Level 0: Completely settled, 0 grains in flight.
+///    - Level 1: Subtle occasional micro-hops (~1.0 - 1.8 cm).
+///    - Level 2: Noticeable localized grain bouncing (~2.5 - 4.0 cm).
+///    - Level 3: Frequent and stronger bouncing (~4.0 - 6.5 cm).
+///    - Level 4: Strongest controlled agitation (~6.0 - 9.0 cm).
+/// </summary>
+public class VibrationParticleController : MonoBehaviour
+{
+    private const int GrainsPerWing = 75;
+
+    [Header("Platform and Knob References")]
+    [Tooltip("The Main_Vibration_Frequency_Knob XRSteppedKnob component.")]
+    [SerializeField] private XRSteppedKnob _knob;
+    [Tooltip("The Vibrating_Rubber_Surface transform (the physically vibrating deck).")]
+    [SerializeField] private Transform _rubberTransform;
+
+    [Header("Settled Dust Overlay")]
+    [Tooltip("The primary settled granular refractory dust overlay GameObject.")]
+    [SerializeField] private GameObject _settledDustOverlay;
+
+    [Header("Secondary Grain Particle Systems")]
+    [Tooltip("Left wing grain ParticleSystem (VibrationDust_Left).")]
+    [SerializeField] private ParticleSystem _leftWingPS;
+    [Tooltip("Right wing grain ParticleSystem (VibrationDust_Right).")]
+    [SerializeField] private ParticleSystem _rightWingPS;
+
+    [Header("Kinematic Tuning (Phase 2G Calibrated)")]
+    [Tooltip("Vibration frequencies corresponding to Knob Levels 0–4 (Hz).")]
+    [SerializeField] private float[] _operatingFrequencies = { 0f, 6.0f, 13.3f, 20.7f, 28.0f };
+    [Tooltip("Minimum initial vertical hop velocity (m/s) per level.")]
+    [SerializeField] private float[] _minHopVelocities = { 0f, 0.45f, 0.70f, 0.90f, 1.10f };
+    [Tooltip("Maximum initial vertical hop velocity (m/s) per level.")]
+    [SerializeField] private float[] _maxHopVelocities = { 0f, 0.58f, 0.88f, 1.12f, 1.35f };
+    [Tooltip("Fraction of settled grains eligible for kick per vibration wave.")]
+    [SerializeField] private float[] _kickFractions = { 0f, 0.08f, 0.22f, 0.45f, 0.75f };
+    [Tooltip("Maximum lateral scattering velocity (m/s) per level.")]
+    [SerializeField] private float[] _lateralVelocities = { 0f, 0.02f, 0.05f, 0.09f, 0.14f };
+
+    [Header("Runtime State")]
+    [SerializeField] private int _currentLevel = 0;
+    [SerializeField] private float _measuredSurfaceSpeed = 0f;
+    [SerializeField] private bool _isSurfaceMoving = false;
+    [SerializeField] private int _activeAirborneLeft = 0;
+    [SerializeField] private int _activeAirborneRight = 0;
+    [SerializeField] private int _totalActiveAirborne = 0;
+
+    public int CurrentLevel => _currentLevel;
+    public float MeasuredSurfaceSpeed => _measuredSurfaceSpeed;
+    public bool IsSurfaceMoving => _isSurfaceMoving;
+    public int ActiveAirborneCount => _totalActiveAirborne;
+
+    // -------------------------------------------------------------------------
+    // Internal Simulation Structures
+    // -------------------------------------------------------------------------
+
+    private struct LooseGrain
+    {
+        public Vector3 anchorLocalPos;
+        public float currentY;
+        public float velocityY;
+        public Vector2 currentLateral;
+        public Vector2 lateralVel;
+        public float settleDelay;
+        public bool isAirborne;
+        public float size;
+        public Color color;
+        public float rotation;
+    }
+
+    private LooseGrain[] _leftGrains;
+    private LooseGrain[] _rightGrains;
+    private ParticleSystem.Particle[] _leftParticles;
+    private ParticleSystem.Particle[] _rightParticles;
+
+    private Vector3 _previousRubberPos;
+    private float _smoothSurfaceSpeed;
+    private float _waveTimer;
+
+    // -------------------------------------------------------------------------
+    // Lifecycle
+    // -------------------------------------------------------------------------
+
+    private void Awake()
+    {
+        AutoBind();
+        InitializeGrainPools();
+    }
+
+    private void Start()
+    {
+        AutoBind();
+        InitializeGrainPools();
+
+        if (_rubberTransform != null)
+            _previousRubberPos = _rubberTransform.position;
+
+        if (_settledDustOverlay != null)
+            _settledDustOverlay.SetActive(true);
+
+        ConfigureParticleSystem(_leftWingPS);
+        ConfigureParticleSystem(_rightWingPS);
+    }
+
+    private void OnEnable()
+    {
+        if (_settledDustOverlay != null)
+            _settledDustOverlay.SetActive(true);
+
+        if (_leftGrains == null || _rightGrains == null)
+            InitializeGrainPools();
+    }
+
+    private void Update()
+    {
+        float dt = Time.deltaTime;
+        if (dt <= 0.0001f) return;
+
+        // 1. Measure real-time surface velocity of the deck
+        if (_rubberTransform != null)
+        {
+            Vector3 currentPos = _rubberTransform.position;
+            float instantSpeed = Vector3.Distance(currentPos, _previousRubberPos) / dt;
+            _previousRubberPos = currentPos;
+
+            _smoothSurfaceSpeed = Mathf.Lerp(_smoothSurfaceSpeed, instantSpeed, 12f * dt);
+            _measuredSurfaceSpeed = _smoothSurfaceSpeed;
+            _isSurfaceMoving = _measuredSurfaceSpeed > 0.015f;
+        }
+
+        // 2. Read knob step level
+        _currentLevel = ResolveLevel();
+
+        bool isVibrating = _currentLevel > 0 && _isSurfaceMoving;
+
+        // 3. Trigger vibration impulses
+        if (isVibrating)
+        {
+            float freq = _operatingFrequencies[_currentLevel];
+            float wavePeriod = freq > 0.1f ? (1.0f / (freq * 1.5f)) : 0.1f;
+
+            _waveTimer += dt;
+            if (_waveTimer >= wavePeriod)
+            {
+                _waveTimer -= wavePeriod;
+                TriggerVibrationWave(_leftGrains, _currentLevel);
+                TriggerVibrationWave(_rightGrains, _currentLevel);
+            }
+        }
+        else
+        {
+            _waveTimer = 0f;
+        }
+
+        // 4. Update the 6-stage physical cycle for every grain
+        _activeAirborneLeft = UpdateGrainPhysics(_leftGrains, dt);
+        _activeAirborneRight = UpdateGrainPhysics(_rightGrains, dt);
+        _totalActiveAirborne = _activeAirborneLeft + _activeAirborneRight;
+    }
+
+    private void LateUpdate()
+    {
+        // 5. Render exact grain positions via ParticleSystem buffers
+        PushParticlesToSystem(_leftWingPS, _leftGrains, _leftParticles);
+        PushParticlesToSystem(_rightWingPS, _rightGrains, _rightParticles);
+    }
+
+    // -------------------------------------------------------------------------
+    // Physics Engine: 6-Stage Hop Cycle
+    // -------------------------------------------------------------------------
+
+    private void TriggerVibrationWave(LooseGrain[] grains, int level)
+    {
+        if (grains == null || level <= 0) return;
+
+        float kickFrac = _kickFractions[Mathf.Clamp(level, 0, _kickFractions.Length - 1)];
+        float minV = _minHopVelocities[Mathf.Clamp(level, 0, _minHopVelocities.Length - 1)];
+        float maxV = _maxHopVelocities[Mathf.Clamp(level, 0, _maxHopVelocities.Length - 1)];
+        float latMax = _lateralVelocities[Mathf.Clamp(level, 0, _lateralVelocities.Length - 1)];
+
+        for (int i = 0; i < grains.Length; i++)
+        {
+            // Only kick grains that are currently settled on the deck
+            if (!grains[i].isAirborne && grains[i].settleDelay <= 0f)
+            {
+                if (UnityEngine.Random.value < kickFrac)
+                {
+                    // STAGE 2: LIFT AWAY FROM SURFACE
+                    grains[i].isAirborne = true;
+                    grains[i].velocityY = UnityEngine.Random.Range(minV, maxV);
+                    grains[i].lateralVel = new Vector2(
+                        UnityEngine.Random.Range(-latMax, latMax),
+                        UnityEngine.Random.Range(-latMax, latMax)
+                    );
+                }
+            }
+        }
+    }
+
+    private static int UpdateGrainPhysics(LooseGrain[] grains, float dt)
+    {
+        if (grains == null) return 0;
+
+        int airborneCount = 0;
+        const float gravity = 9.81f;
+        const float deckRestY = 0.002f;
+
+        for (int i = 0; i < grains.Length; i++)
+        {
+            if (grains[i].isAirborne)
+            {
+                airborneCount++;
+
+                // STAGES 3 & 4: REACH PEAK HEIGHT & DESCEND NATURALLY UNDER GRAVITY
+                grains[i].velocityY -= gravity * dt;
+                grains[i].currentY += grains[i].velocityY * dt;
+                grains[i].currentLateral += grains[i].lateralVel * dt;
+
+                // STAGE 5: LAND BACK ON SURFACE
+                if (grains[i].currentY <= deckRestY)
+                {
+                    grains[i].currentY = deckRestY;
+
+                    // Micro-rebound on energetic landings
+                    if (grains[i].velocityY < -0.45f)
+                    {
+                        grains[i].velocityY = -grains[i].velocityY * 0.22f; // Inelastic rebound
+                        grains[i].lateralVel *= 0.5f;
+                    }
+                    else
+                    {
+                        // STAGE 6: SETTLE UNTIL NEXT VIBRATION IMPULSE
+                        grains[i].velocityY = 0f;
+                        grains[i].lateralVel = Vector2.zero;
+                        grains[i].isAirborne = false;
+                        grains[i].settleDelay = UnityEngine.Random.Range(0.04f, 0.16f);
+                    }
+                }
+            }
+            else
+            {
+                // STAGE 1: RESTING ON THE SURFACE
+                grains[i].currentY = deckRestY;
+                grains[i].velocityY = 0f;
+
+                if (grains[i].settleDelay > 0f)
+                    grains[i].settleDelay -= dt;
+
+                // Gently relax lateral drift back toward drift anchor
+                grains[i].currentLateral = Vector2.Lerp(grains[i].currentLateral, Vector2.zero, 5f * dt);
+            }
+        }
+
+        return airborneCount;
+    }
+
+    // -------------------------------------------------------------------------
+    // Particle Buffer Updates
+    // -------------------------------------------------------------------------
+
+    private static void PushParticlesToSystem(ParticleSystem ps, LooseGrain[] grains, ParticleSystem.Particle[] parts)
+    {
+        if (ps == null || grains == null || parts == null) return;
+
+        for (int i = 0; i < grains.Length; i++)
+        {
+            parts[i].position = new Vector3(
+                grains[i].anchorLocalPos.x + grains[i].currentLateral.x,
+                grains[i].currentY,
+                grains[i].anchorLocalPos.z + grains[i].currentLateral.y
+            );
+            parts[i].startSize = grains[i].size;
+            parts[i].startColor = grains[i].color;
+            parts[i].rotation = grains[i].rotation;
+            parts[i].remainingLifetime = 100f;
+            parts[i].startLifetime = 100f;
+        }
+
+        ps.SetParticles(parts, grains.Length);
+    }
+
+    // -------------------------------------------------------------------------
+    // Setup and Initialization
+    // -------------------------------------------------------------------------
+
+    public void AutoBind()
+    {
+        if (_knob == null)
+            _knob = FindAnyObjectByType<XRSteppedKnob>();
+
+        if (_rubberTransform == null)
+        {
+            var rubberGo = GameObject.Find("Vibrating_Rubber_Surface");
+            if (rubberGo != null) _rubberTransform = rubberGo.transform;
+        }
+
+        if (_settledDustOverlay == null)
+        {
+            var overlayGo = GameObject.Find("SettledDust_Overlay");
+            if (overlayGo != null) _settledDustOverlay = overlayGo;
+        }
+
+        if (_leftWingPS == null)
+        {
+            var leftGo = GameObject.Find("VibrationDust_Left");
+            if (leftGo != null) _leftWingPS = leftGo.GetComponent<ParticleSystem>();
+        }
+
+        if (_rightWingPS == null)
+        {
+            var rightGo = GameObject.Find("VibrationDust_Right");
+            if (rightGo != null) _rightWingPS = rightGo.GetComponent<ParticleSystem>();
+        }
+    }
+
+    private void InitializeGrainPools()
+    {
+        // 4 accumulation drift centers on Left Wing (Seed 101)
+        Vector2[] leftClusters = new Vector2[]
+        {
+            new Vector2(-0.37f, -0.24f),
+            new Vector2(0.43f, -0.14f),
+            new Vector2(-0.12f, 0.26f),
+            new Vector2(0.38f, 0.31f)
+        };
+        float[] leftRadii = new float[] { 0.22f, 0.18f, 0.20f, 0.16f };
+
+        // 4 accumulation drift centers on Right Wing (Seed 303)
+        Vector2[] rightClusters = new Vector2[]
+        {
+            new Vector2(0.36f, 0.16f),
+            new Vector2(-0.14f, -0.09f),
+            new Vector2(-0.49f, -0.29f),
+            new Vector2(0.46f, -0.34f)
+        };
+        float[] rightRadii = new float[] { 0.24f, 0.20f, 0.18f, 0.15f };
+
+        Color[] palette = new Color[]
+        {
+            new Color(0.95f, 0.92f, 0.88f, 1f), // bright quartz crystal
+            new Color(0.88f, 0.85f, 0.80f, 1f), // warm light refractory castable
+            new Color(0.78f, 0.74f, 0.69f, 1f), // medium refractory grain
+            new Color(0.60f, 0.56f, 0.51f, 1f)  // coarse grog aggregate speck
+        };
+
+        _leftGrains = CreateGrains(101, GrainsPerWing, leftClusters, leftRadii, palette);
+        _rightGrains = CreateGrains(303, GrainsPerWing, rightClusters, rightRadii, palette);
+
+        _leftParticles = new ParticleSystem.Particle[GrainsPerWing];
+        _rightParticles = new ParticleSystem.Particle[GrainsPerWing];
+    }
+
+    private static LooseGrain[] CreateGrains(int seed, int count, Vector2[] clusters, float[] radii, Color[] palette)
+    {
+        LooseGrain[] grains = new LooseGrain[count];
+        System.Random rng = new System.Random(seed);
+
+        for (int i = 0; i < count; i++)
+        {
+            int cIdx = i % clusters.Length;
+            float angle = (float)(rng.NextDouble() * Mathf.PI * 2);
+            float dist = (float)(rng.NextDouble() * rng.NextDouble()) * radii[cIdx];
+            float x = clusters[cIdx].x + Mathf.Cos(angle) * dist;
+            float z = clusters[cIdx].y + Mathf.Sin(angle) * dist;
+
+            grains[i] = new LooseGrain
+            {
+                anchorLocalPos = new Vector3(x, 0.002f, z),
+                currentY = 0.002f,
+                velocityY = 0f,
+                currentLateral = Vector2.zero,
+                lateralVel = Vector2.zero,
+                settleDelay = 0f,
+                isAirborne = false,
+                size = 0.006f + (float)rng.NextDouble() * 0.004f, // 6mm - 10mm (Phase 2H calibrated realistic refractory grains)
+                color = palette[rng.Next(0, palette.Length)],
+                rotation = (float)(rng.NextDouble() * 360f)
+            };
+        }
+
+        return grains;
+    }
+
+    private static void ConfigureParticleSystem(ParticleSystem ps)
+    {
+        if (ps == null) return;
+
+        var main = ps.main;
+        main.simulationSpace = ParticleSystemSimulationSpace.Local;
+        main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+        main.startSizeMultiplier = 1.0f;
+        main.gravityModifier = 0f;
+        main.playOnAwake = false;
+        main.maxParticles = GrainsPerWing + 20;
+
+        var emission = ps.emission;
+        emission.enabled = false; // Directly managed by SetParticles
+
+        var vel = ps.velocityOverLifetime;
+        vel.enabled = false;
+
+        var noise = ps.noise;
+        noise.enabled = false;
+
+        if (!ps.isPlaying)
+            ps.Play();
+    }
+
+    private int ResolveLevel()
+    {
+        // Physical platform vibration and dust agitation are fixed & subtle whenever the platform is running,
+        // and never change when the frequency selector (0..4) is adjusted.
+        if (_knob != null && _knob.VibrationEffect != null)
+            return _knob.VibrationEffect.IsVibrating ? 1 : 0;
+
+        return _isSurfaceMoving ? 1 : 0;
+    }
+}

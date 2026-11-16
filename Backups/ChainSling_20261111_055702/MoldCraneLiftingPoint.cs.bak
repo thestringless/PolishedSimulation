@@ -1,0 +1,927 @@
+using System;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.XR.Interaction.Toolkit;
+using UnityEngine.XR.Interaction.Toolkit.Filtering;
+using UnityEngine.XR.Interaction.Toolkit.Interactables;
+using UnityEngine.XR.Interaction.Toolkit.Interactors;
+using NOT_Lonely;
+
+namespace Sefpro.Assembly
+{
+    /// <summary>
+    /// Four-point basket-hitch chain lifting arrangement for the MoldCasting assembly.
+    /// - Chain and MoldCasting are separate, independent hierarchies (zero mesh or transform parenting between them).
+    /// - Uses XRSocketInteractor components at both ends of the mould's bottom edges (Left Bottom Edge & Right Bottom Edge)
+    ///   to socket the two U-loop chain handles (LoopHandle_Chain_1_U and LoopHandle_Chain_2_U), plus an XRSocketInteractor
+    ///   on the crane hook (WireHookMount) that sockets the central lifting Ring when engaged.
+    /// - Each U-loop wraps around the mould at its end: from the central Ring down the Front wall, around the bottom edge
+    ///   (Front-Bottom edge -> underside of PalletBase -> Back-Bottom edge), and up the Back wall back to the central Ring,
+    ///   creating 4 taut load-bearing legs (FL, BL, FR, BR) converging at the central Ring.
+    /// </summary>
+    [ExecuteAlways]
+    [DisallowMultipleComponent]
+    public class MoldCraneLiftingPoint : MonoBehaviour
+    {
+        [Header("Mould & Chain Root References (Separate Independent Hierarchies)")]
+        [Tooltip("Root transform of the MoldCasting assembly.")]
+        public Transform moldRoot;
+
+        [Tooltip("MoldCast transform holding MoldAssemblyManager and the individual MoldPart components.")]
+        public Transform moldCastTransform;
+
+        [Tooltip("MoldAssemblyManager managing mould dismantling and reassembly.")]
+        public MoldAssemblyManager assemblyManager;
+
+        [Tooltip("Pallet base transform (Cube.004) whose bottom edges the chain wraps under.")]
+        public Transform palletBaseTransform;
+
+        [Tooltip("Root transform of the independent Chains object.")]
+        public Transform chainsRoot;
+
+        [Tooltip("Central master lifting ring (Chains/Ring).")]
+        public Transform centralRing;
+
+        [Tooltip("Chain_1_U transform (81 links) wrapping around the Left end of the mould.")]
+        public Transform chain1Root;
+
+        [Tooltip("Chain_2_U transform (81 links) wrapping around the Right end of the mould.")]
+        public Transform chain2Root;
+
+        [Header("XR Socket Interactors & Interactables")]
+        [Tooltip("XRSocketInteractor at the Left bottom edge of the mould (accepts LoopHandle_Chain_1_U).")]
+        public XRSocketInteractor leftBottomEdgeSocket;
+
+        [Tooltip("XRSocketInteractor at the Right bottom edge of the mould (accepts LoopHandle_Chain_2_U).")]
+        public XRSocketInteractor rightBottomEdgeSocket;
+
+        [Tooltip("XRGrabInteractable handle for Chain_1_U's bottom U-loop bend.")]
+        public XRGrabInteractable chain1LoopGrab;
+
+        [Tooltip("XRGrabInteractable handle for Chain_2_U's bottom U-loop bend.")]
+        public XRGrabInteractable chain2LoopGrab;
+
+        [Tooltip("XRGrabInteractable on the central lifting Ring.")]
+        public XRGrabInteractable centralRingGrab;
+
+        [Tooltip("Optional XRSocketInteractor on the crane hook saddle for the central lifting Ring.")]
+        public XRSocketInteractor hookRingSocket;
+
+        [Header("Basket Wrap Geometry Around Mould Bottom Edges")]
+        [Tooltip("X offsets from the mould center (-22.54) for the Left (-0.42m) and Right (+0.42m) chain wrap stations.")]
+        public float wrapStationHalfSpanX = 0.42f;
+
+        [Tooltip("Clearance offset (m) outside the mould walls and under the bottom edges so links wrap cleanly around the mould surface without intersecting.")]
+        public float chainSurfaceClearance = 0.016f;
+
+        [Tooltip("Number of links per free leg between the central Ring and the top edge of the mould wall (13 links front + 55 links wrapped around sides & bottom + 13 links back = 81 links).")]
+        [Range(8, 20)]
+        public int freeLinksPerLeg = 13;
+
+        [Tooltip("Local attachment offsets on the central Ring for the 4 legs (FL, BL, FR, BR).")]
+        public Vector3[] ringLegLocalOffsets = new Vector3[4]
+        {
+            new Vector3(-0.088f, -0.025f, -0.095f), // FL (Chain_1_U start, Link_001)
+            new Vector3(-0.088f,  0.025f, -0.105f), // BL (Chain_1_U end,   Link_081)
+            new Vector3( 0.088f, -0.025f, -0.095f), // FR (Chain_2_U start, Link_001)
+            new Vector3( 0.088f,  0.025f, -0.105f)  // BR (Chain_2_U end,   Link_081)
+        };
+
+        [Header("Chain Tautness & Lifting Parameters")]
+        [Tooltip("Height of the central lifting ring above the mould top edge when resting (slack pose).")]
+        public float restingRingHeightAboveTop = 0.50f;
+
+        [Tooltip("Height of the central lifting ring above the mould top edge at which the 4 chain legs become 100% taut and lift the mould.")]
+        public float tautRingHeightAboveTop = 0.62f;
+
+        [Tooltip("Maximum catenary sag (metres) along the 4 upper legs when resting slack.")]
+        public float maxRestingSagMeters = 0.055f;
+
+        [Header("Crane Hook Seating & Capture")]
+        [Tooltip("Offset (0.2984m) from WireHookMount origin down to the C-hook curved saddle center.")]
+        public float hookSaddleOffset = 0.2984f;
+
+        [Tooltip("Offset from the central Ring center to the upper inner rim where the crane hook saddle seats.")]
+        public Vector3 ringSeatLocalOffset = new Vector3(0f, 0f, 0.115f);
+
+        [Tooltip("Enable automatic proximity capture when the crane hook approaches the central lifting ring.")]
+        public bool autoConnect = true;
+
+        [Tooltip("Proximity distance (m) within which the crane hook automatically connects to the central ring.")]
+        public float autoConnectRadius = 0.45f;
+
+        [Tooltip("After detaching, automatic capture re-arms once the hook moves beyond this distance (m) from the ring.")]
+        public float autoConnectRearmDistance = 0.58f;
+
+        [Tooltip("Minimum warehouse floor Y coordinate.")]
+        public float minGroundY = 0.0f;
+
+        [Header("Live State (Read Only)")]
+        [SerializeField] private bool isAttached = false;
+        [SerializeField] private bool isHookInRange = false;
+        [SerializeField] private bool isLeftLoopSocketed = true;
+        [SerializeField] private bool isRightLoopSocketed = true;
+        [SerializeField] private bool isChainTaut = false;
+        [SerializeField] private bool isMoldSuspended = false;
+        [SerializeField] private float currentTautness = 0f;
+        [SerializeField] private float currentClearanceAboveSupport = 0f;
+        [SerializeField] private Transform currentHookMount;
+        [SerializeField] private Rigidbody currentHookRb;
+
+        private readonly List<Transform> _chain1Links = new List<Transform>(81);
+        private readonly List<Transform> _chain2Links = new List<Transform>(81);
+        private Collider[] _moldAndSlingColliders;
+        private Collider[] _hookColliders;
+        private NL_Hook _cachedNlHook;
+        private NL_OverheadCrane _cachedCrane;
+        private NL_AttachCargo _cachedAttachCargo;
+        private bool _autoConnectArmed = true;
+        private bool _linksCached = false;
+
+        public bool IsAttached => isAttached;
+        public bool IsHookInRange => isHookInRange;
+        public bool IsLeftLoopSocketed => CheckSocketConnected(leftBottomEdgeSocket, chain1LoopGrab, ref isLeftLoopSocketed);
+        public bool IsRightLoopSocketed => CheckSocketConnected(rightBottomEdgeSocket, chain2LoopGrab, ref isRightLoopSocketed);
+        public bool AreBothLoopsSocketed => IsLeftLoopSocketed && IsRightLoopSocketed;
+        public bool IsChainTaut => isChainTaut;
+        public bool IsMoldSuspended => isMoldSuspended;
+        public float CurrentTautness => currentTautness;
+        public float CurrentClearanceAboveSupport => currentClearanceAboveSupport;
+        public Transform CurrentHookMount => currentHookMount;
+        public int ActiveLegCount => (IsLeftLoopSocketed ? 2 : 0) + (IsRightLoopSocketed ? 2 : 0);
+
+        /// <summary>
+        /// World position on the central Ring's upper inner rim where the crane hook saddle seats.
+        /// </summary>
+        public Vector3 RingSeatWorldPosition
+        {
+            get
+            {
+                if (centralRing != null)
+                    return centralRing.TransformPoint(ringSeatLocalOffset);
+                return transform.position;
+            }
+        }
+
+        /// <summary>
+        /// World position of the crane hook's load-bearing saddle point.
+        /// </summary>
+        public Vector3 GetHookSaddleWorld(Transform hookMount)
+        {
+            if (hookMount == null)
+                return RingSeatWorldPosition;
+            return hookMount.position - hookMount.up * hookSaddleOffset;
+        }
+
+        private void Awake()
+        {
+            ResolveReferences();
+            CacheChainLegLinks();
+            ConfigureSocketFiltersAndCollisions();
+            UpdateSlingAndMoldPose();
+        }
+
+        private void OnEnable()
+        {
+            ResolveReferences();
+            CacheChainLegLinks();
+            ConfigureSocketFiltersAndCollisions();
+            UpdateSlingAndMoldPose();
+        }
+
+        private void Start()
+        {
+            if (Application.isPlaying)
+            {
+                EnsureInitialSocketSelections();
+                UpdateSlingAndMoldPose();
+            }
+        }
+
+        private void OnDestroy()
+        {
+            if (isAttached && Application.isPlaying)
+            {
+                DetachFromHook();
+            }
+        }
+
+        public void ResolveReferences()
+        {
+            if (chainsRoot == null)
+            {
+                if (transform.name == "Ring" && transform.parent != null)
+                    chainsRoot = transform.parent;
+                else if (transform.name.Contains("Chains"))
+                    chainsRoot = transform;
+                else
+                {
+                    var go = GameObject.Find("Chains");
+                    if (go != null) chainsRoot = go.transform;
+                }
+            }
+
+            if (centralRing == null && chainsRoot != null)
+                centralRing = chainsRoot.Find("Ring");
+            if (centralRing == null)
+                centralRing = transform;
+
+            if (chain1Root == null && chainsRoot != null)
+                chain1Root = chainsRoot.Find("Chain_1_U");
+            if (chain2Root == null && chainsRoot != null)
+                chain2Root = chainsRoot.Find("Chain_2_U");
+
+            if (moldRoot == null)
+            {
+                var mc = GameObject.Find("MoldCasting");
+                if (mc != null) moldRoot = mc.transform;
+            }
+
+            if (moldCastTransform == null && moldRoot != null)
+                moldCastTransform = moldRoot.Find("MoldCast");
+
+            if (assemblyManager == null && moldCastTransform != null)
+                assemblyManager = moldCastTransform.GetComponent<MoldAssemblyManager>();
+
+            if (palletBaseTransform == null && moldCastTransform != null)
+                palletBaseTransform = moldCastTransform.Find("Cube.004");
+
+            if (moldCastTransform != null)
+            {
+                if (leftBottomEdgeSocket == null)
+                {
+                    var ls = moldCastTransform.Find("Cube.004/ChainSocket_BottomEdge_Left") ?? moldCastTransform.Find("ChainSocket_BottomEdge_Left");
+                    if (ls != null) leftBottomEdgeSocket = ls.GetComponent<XRSocketInteractor>();
+                }
+                if (rightBottomEdgeSocket == null)
+                {
+                    var rs = moldCastTransform.Find("Cube.004/ChainSocket_BottomEdge_Right") ?? moldCastTransform.Find("ChainSocket_BottomEdge_Right");
+                    if (rs != null) rightBottomEdgeSocket = rs.GetComponent<XRSocketInteractor>();
+                }
+            }
+
+            if (chainsRoot != null)
+            {
+                if (chain1LoopGrab == null)
+                {
+                    var h1 = chainsRoot.Find("LoopHandle_Chain_1_U");
+                    if (h1 != null) chain1LoopGrab = h1.GetComponent<XRGrabInteractable>();
+                }
+                if (chain2LoopGrab == null)
+                {
+                    var h2 = chainsRoot.Find("LoopHandle_Chain_2_U");
+                    if (h2 != null) chain2LoopGrab = h2.GetComponent<XRGrabInteractable>();
+                }
+            }
+
+            if (centralRingGrab == null && centralRing != null)
+                centralRingGrab = centralRing.GetComponent<XRGrabInteractable>();
+        }
+
+        public void CacheChainLegLinks()
+        {
+            if (chain1Root == null || chain2Root == null)
+                return;
+
+            CollectSortedLinks(chain1Root, _chain1Links);
+            CollectSortedLinks(chain2Root, _chain2Links);
+            _linksCached = true;
+        }
+
+        private static void CollectSortedLinks(Transform root, List<Transform> targetList)
+        {
+            targetList.Clear();
+            if (root == null) return;
+            for (int i = 0; i < root.childCount; i++)
+            {
+                var c = root.GetChild(i);
+                if (c != null)
+                {
+                    if (!c.gameObject.activeSelf)
+                        c.gameObject.SetActive(true);
+                    targetList.Add(c);
+                }
+            }
+            targetList.Sort((a, b) => string.CompareOrdinal(a.name, b.name));
+        }
+
+        private void ConfigureSocketFiltersAndCollisions()
+        {
+            // Add target filters so each bottom-edge XRSocketInteractor only accepts its corresponding chain loop handle
+            // and never steals MoldParts or other scene objects.
+            if (leftBottomEdgeSocket != null && chain1LoopGrab != null)
+            {
+                leftBottomEdgeSocket.selectFilters.Clear();
+                leftBottomEdgeSocket.selectFilters.Add(new XRSelectFilterDelegate((_, interactable) => ReferenceEquals(interactable, chain1LoopGrab)));
+                leftBottomEdgeSocket.hoverFilters.Clear();
+                leftBottomEdgeSocket.hoverFilters.Add(new XRHoverFilterDelegate((_, interactable) => ReferenceEquals(interactable, chain1LoopGrab)));
+            }
+
+            if (rightBottomEdgeSocket != null && chain2LoopGrab != null)
+            {
+                rightBottomEdgeSocket.selectFilters.Clear();
+                rightBottomEdgeSocket.selectFilters.Add(new XRSelectFilterDelegate((_, interactable) => ReferenceEquals(interactable, chain2LoopGrab)));
+                rightBottomEdgeSocket.hoverFilters.Clear();
+                rightBottomEdgeSocket.hoverFilters.Add(new XRHoverFilterDelegate((_, interactable) => ReferenceEquals(interactable, chain2LoopGrab)));
+            }
+
+            if (hookRingSocket != null && centralRingGrab != null)
+            {
+                hookRingSocket.selectFilters.Clear();
+                hookRingSocket.selectFilters.Add(new XRSelectFilterDelegate((_, interactable) => ReferenceEquals(interactable, centralRingGrab)));
+                hookRingSocket.hoverFilters.Clear();
+                hookRingSocket.hoverFilters.Add(new XRHoverFilterDelegate((_, interactable) => ReferenceEquals(interactable, centralRingGrab)));
+            }
+
+            var colList = new List<Collider>();
+            if (moldRoot != null)
+                colList.AddRange(moldRoot.GetComponentsInChildren<Collider>(true));
+            if (chainsRoot != null)
+                colList.AddRange(chainsRoot.GetComponentsInChildren<Collider>(true));
+            _moldAndSlingColliders = colList.ToArray();
+
+            var chainCols = chainsRoot != null ? chainsRoot.GetComponentsInChildren<Collider>(true) : GetComponentsInChildren<Collider>(true);
+            for (int i = 0; i < chainCols.Length; i++)
+            {
+                if (chainCols[i] == null) continue;
+                for (int j = 0; j < _moldAndSlingColliders.Length; j++)
+                {
+                    if (_moldAndSlingColliders[j] == null || chainCols[i] == _moldAndSlingColliders[j])
+                        continue;
+                    Physics.IgnoreCollision(chainCols[i], _moldAndSlingColliders[j], true);
+                }
+            }
+        }
+
+        private void EnsureInitialSocketSelections()
+        {
+            if (leftBottomEdgeSocket != null && chain1LoopGrab != null && !leftBottomEdgeSocket.hasSelection)
+            {
+                if (leftBottomEdgeSocket.interactionManager != null)
+                    leftBottomEdgeSocket.interactionManager.SelectEnter((IXRSelectInteractor)leftBottomEdgeSocket, (IXRSelectInteractable)chain1LoopGrab);
+            }
+            if (rightBottomEdgeSocket != null && chain2LoopGrab != null && !rightBottomEdgeSocket.hasSelection)
+            {
+                if (rightBottomEdgeSocket.interactionManager != null)
+                    rightBottomEdgeSocket.interactionManager.SelectEnter((IXRSelectInteractor)rightBottomEdgeSocket, (IXRSelectInteractable)chain2LoopGrab);
+            }
+        }
+
+        private static bool CheckSocketConnected(XRSocketInteractor socket, XRGrabInteractable handle, ref bool cachedFlag)
+        {
+            if (socket == null || handle == null)
+            {
+                cachedFlag = true;
+                return true;
+            }
+
+            if (Application.isPlaying && socket.didStart)
+            {
+                cachedFlag = socket.hasSelection && ReferenceEquals(socket.firstInteractableSelected, handle);
+                return cachedFlag;
+            }
+
+            cachedFlag = socket.startingSelectedInteractable == handle ||
+                         Vector3.Distance(socket.transform.position, handle.transform.position) <= 0.35f;
+            return cachedFlag;
+        }
+
+        private void LateUpdate()
+        {
+            if (!_linksCached)
+                CacheChainLegLinks();
+
+            if (Application.isPlaying && !isAttached && !_autoConnectArmed && currentHookMount != null)
+            {
+                float dist = Vector3.Distance(GetHookSaddleWorld(currentHookMount), RingSeatWorldPosition);
+                if (dist >= autoConnectRearmDistance)
+                    _autoConnectArmed = true;
+            }
+
+            UpdateSlingAndMoldPose();
+        }
+
+        public void SetHookInRange(bool inRange, Transform hookMount = null, Rigidbody hookRb = null)
+        {
+            isHookInRange = inRange;
+            if (inRange)
+            {
+                currentHookMount = hookMount;
+                currentHookRb = hookRb;
+            }
+            else if (!isAttached)
+            {
+                Transform refHook = hookMount != null ? hookMount : currentHookMount;
+                if (refHook != null)
+                {
+                    float dist = Vector3.Distance(GetHookSaddleWorld(refHook), RingSeatWorldPosition);
+                    if (dist >= autoConnectRearmDistance)
+                        _autoConnectArmed = true;
+                }
+                else
+                {
+                    _autoConnectArmed = true;
+                }
+                currentHookMount = null;
+                currentHookRb = null;
+            }
+        }
+
+        /// <summary>
+        /// Checks if the crane hook is within automatic capture range and connects if armed.
+        /// </summary>
+        public bool TryAutoConnect(Transform hookMount, Rigidbody hookRb)
+        {
+            if (isAttached || !autoConnect || hookMount == null)
+                return false;
+
+            Vector3 saddleWorld = GetHookSaddleWorld(hookMount);
+            float dist = Vector3.Distance(saddleWorld, RingSeatWorldPosition);
+
+            if (!_autoConnectArmed)
+            {
+                if (dist >= autoConnectRearmDistance)
+                    _autoConnectArmed = true;
+                else
+                    return false;
+            }
+
+            if (dist <= autoConnectRadius)
+            {
+                return AttachToHook(hookMount, hookRb, enforceSeatingTolerance: false);
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Connects the crane hook to the central lifting ring of the 4-leg mould chain sling.
+        /// </summary>
+        public bool AttachToHook(Transform hookMount, Rigidbody hookRb, bool enforceSeatingTolerance = false)
+        {
+            if (isAttached || hookMount == null)
+                return false;
+
+            ResolveReferences();
+
+            Vector3 saddleWorld = GetHookSaddleWorld(hookMount);
+            Vector3 seatWorld = RingSeatWorldPosition;
+            float dist = Vector3.Distance(saddleWorld, seatWorld);
+
+            if (enforceSeatingTolerance && dist > autoConnectRadius * 1.25f)
+                return false;
+
+            currentHookMount = hookMount;
+            currentHookRb = hookRb != null ? hookRb : hookMount.GetComponent<Rigidbody>();
+            _cachedNlHook = hookMount.GetComponentInParent<NL_Hook>();
+            _cachedCrane = _cachedNlHook != null && _cachedNlHook.Crane != null
+                ? _cachedNlHook.Crane
+                : FindAnyObjectByType<NL_OverheadCrane>();
+            _cachedAttachCargo = hookMount.GetComponent<NL_AttachCargo>();
+
+            // Ignore collisions between hook and sling/mould while attached
+            _hookColliders = hookMount.GetComponentsInChildren<Collider>(true);
+            if (_moldAndSlingColliders != null && _hookColliders != null)
+            {
+                for (int i = 0; i < _moldAndSlingColliders.Length; i++)
+                {
+                    for (int j = 0; j < _hookColliders.Length; j++)
+                    {
+                        if (_moldAndSlingColliders[i] != null && _hookColliders[j] != null)
+                            Physics.IgnoreCollision(_moldAndSlingColliders[i], _hookColliders[j], true);
+                    }
+                }
+            }
+
+            if (Application.isPlaying && hookRingSocket != null && centralRingGrab != null)
+            {
+                hookRingSocket.socketActive = true;
+                if (!hookRingSocket.hasSelection && hookRingSocket.interactionManager != null)
+                    hookRingSocket.interactionManager.SelectEnter((IXRSelectInteractor)hookRingSocket, (IXRSelectInteractable)centralRingGrab);
+            }
+
+            isAttached = true;
+            _autoConnectArmed = false;
+
+            if (_cachedAttachCargo != null)
+                _cachedAttachCargo.isAttached = true;
+
+            UpdateSlingAndMoldPose();
+            Debug.Log($"[MoldCraneLiftingPoint] Connected crane hook '{hookMount.name}' to central mould lifting ring (dist={dist:F3}m, bothLoopsSocketed={AreBothLoopsSocketed}).");
+            return true;
+        }
+
+        /// <summary>
+        /// Disconnects the central lifting ring from the crane hook once the mould is resting on a support surface.
+        /// </summary>
+        public void DetachFromHook(bool force = false)
+        {
+            if (!isAttached)
+                return;
+
+            // Ensure the mould settles onto its support surface if detached
+            if (moldRoot != null)
+            {
+                Vector3 center = GetMoldBoundsWorld().center;
+                float supportY = SampleSupportSurfaceY(center);
+                if (moldRoot.position.y > supportY + 0.001f)
+                {
+                    Vector3 pos = moldRoot.position;
+                    pos.y = supportY;
+                    moldRoot.position = pos;
+                    SyncInstalledMoldPartsPhysics();
+                }
+            }
+
+            if (Application.isPlaying && hookRingSocket != null && centralRingGrab != null)
+            {
+                if (hookRingSocket.hasSelection && hookRingSocket.interactionManager != null)
+                    hookRingSocket.interactionManager.SelectExit((IXRSelectInteractor)hookRingSocket, (IXRSelectInteractable)centralRingGrab);
+                hookRingSocket.socketActive = false;
+            }
+
+            if (_moldAndSlingColliders != null && _hookColliders != null)
+            {
+                for (int i = 0; i < _moldAndSlingColliders.Length; i++)
+                {
+                    for (int j = 0; j < _hookColliders.Length; j++)
+                    {
+                        if (_moldAndSlingColliders[i] != null && _hookColliders[j] != null)
+                            Physics.IgnoreCollision(_moldAndSlingColliders[i], _hookColliders[j], false);
+                    }
+                }
+                _hookColliders = null;
+            }
+
+            isAttached = false;
+            isChainTaut = false;
+            isMoldSuspended = false;
+            currentTautness = 0f;
+            currentClearanceAboveSupport = 0f;
+            _autoConnectArmed = false;
+
+            if (_cachedAttachCargo != null)
+                _cachedAttachCargo.isAttached = false;
+
+            UpdateSlingAndMoldPose();
+            Debug.Log("[MoldCraneLiftingPoint] Detached central mould lifting ring from crane hook.");
+        }
+
+        /// <summary>
+        /// Computes the minimum allowed normalized crane hookHeight so lowering stops smoothly once the mould
+        /// rests on the platform/floor and the chain legs relax to their resting pose.
+        /// </summary>
+        public bool TryGetMinAllowedHookHeight(float currentHookHeight, float craneHeight, float hookOffset, out float minHookHeight)
+        {
+            minHookHeight = 0f;
+            if (!isAttached || moldRoot == null)
+                return false;
+
+            float travelSpan = (craneHeight + hookOffset) - 0.5f;
+            if (travelSpan <= 0.01f)
+                travelSpan = 4.3f;
+
+            Bounds moldBounds = GetMoldBoundsWorld();
+            float supportY = SampleSupportSurfaceY(moldBounds.center);
+            float topOffsetAboveMoldRoot = moldBounds.max.y - moldRoot.position.y;
+            float restingTopY = supportY + topOffsetAboveMoldRoot;
+            float minRingSeatY = restingTopY + restingRingHeightAboveTop + (ringSeatLocalOffset.z * GetRingWorldScale());
+
+            Vector3 saddleWorld = GetHookSaddleWorld(currentHookMount);
+            float remainingDrop = saddleWorld.y - minRingSeatY;
+
+            if (remainingDrop <= 0.002f)
+            {
+                minHookHeight = currentHookHeight;
+                return true;
+            }
+
+            float deltaT = remainingDrop / travelSpan;
+            minHookHeight = Mathf.Max(0f, currentHookHeight - deltaT);
+            return true;
+        }
+
+        /// <summary>
+        /// Updates the central lifting ring pose, mould position (when lifted by taut chains), and 3D link poses
+        /// for both U-loop chains wrapping around the mould's bottom edges.
+        /// </summary>
+        public void UpdateSlingAndMoldPose()
+        {
+            if (centralRing == null || moldRoot == null)
+                return;
+
+            Bounds moldBounds = GetMoldBoundsWorld();
+            float topOffsetAboveMoldRoot = moldBounds.max.y - moldRoot.position.y;
+            float ringScale = GetRingWorldScale();
+            float seatToRingCenterOffsetY = ringSeatLocalOffset.z * ringScale;
+            bool bothLoopsSocketed = AreBothLoopsSocketed;
+
+            // Upright ring rotation: local X = world X, local Z = world Up (+Y), local Y = world Back (-Z)
+            Quaternion uprightRingRot = Quaternion.Euler(-90f, 0f, 0f);
+
+            if (isAttached && currentHookMount != null)
+            {
+                if (currentHookRb != null && Application.isPlaying && !currentHookRb.isKinematic)
+                {
+                    currentHookRb.linearVelocity *= 0.2f;
+                    currentHookRb.angularVelocity *= 0.2f;
+                }
+
+                Vector3 hookSaddle = GetHookSaddleWorld(currentHookMount);
+                Vector3 ringCenterPos = hookSaddle - Vector3.up * seatToRingCenterOffsetY;
+
+                float supportY = SampleSupportSurfaceY(new Vector3(hookSaddle.x, moldRoot.position.y, hookSaddle.z));
+                float restingTopY = supportY + topOffsetAboveMoldRoot;
+                float ringHeightAboveRestingTop = ringCenterPos.y - restingTopY;
+
+                float tautSpan = Mathf.Max(0.02f, tautRingHeightAboveTop - restingRingHeightAboveTop);
+                currentTautness = bothLoopsSocketed
+                    ? Mathf.Clamp01((ringHeightAboveRestingTop - restingRingHeightAboveTop) / tautSpan)
+                    : 0f;
+                isChainTaut = bothLoopsSocketed && (ringHeightAboveRestingTop >= tautRingHeightAboveTop - 0.002f);
+
+                if (isChainTaut)
+                {
+                    // Chains are taut and both bottom-edge sockets hold the chain loops: lift the mould assembly
+                    float liftedTopY = ringCenterPos.y - tautRingHeightAboveTop;
+                    float targetMoldY = Mathf.Max(supportY, liftedTopY - topOffsetAboveMoldRoot);
+
+                    Vector3 currentMoldPos = moldRoot.position;
+                    Vector3 centerToMoldXZ = new Vector3(currentMoldPos.x - moldBounds.center.x, 0f, currentMoldPos.z - moldBounds.center.z);
+                    Vector3 targetMoldPos = new Vector3(
+                        ringCenterPos.x + centerToMoldXZ.x,
+                        targetMoldY,
+                        ringCenterPos.z + centerToMoldXZ.z);
+
+                    moldRoot.SetPositionAndRotation(targetMoldPos, Quaternion.identity);
+                    SyncInstalledMoldPartsPhysics();
+
+                    // Keep the independent Chains root aligned in world space without parenting
+                    if (chainsRoot != null && chainsRoot != centralRing)
+                        chainsRoot.position = new Vector3(ringCenterPos.x, targetMoldY, ringCenterPos.z);
+
+                    currentClearanceAboveSupport = Mathf.Max(0f, targetMoldY - supportY);
+                    isMoldSuspended = currentClearanceAboveSupport > 0.005f;
+                }
+                else
+                {
+                    if (moldRoot.position.y > supportY + 0.0005f)
+                    {
+                        Vector3 pos = moldRoot.position;
+                        pos.y = supportY;
+                        moldRoot.position = pos;
+                        SyncInstalledMoldPartsPhysics();
+                    }
+                    if (chainsRoot != null && chainsRoot != centralRing)
+                        chainsRoot.position = new Vector3(moldBounds.center.x, supportY, moldBounds.center.z);
+
+                    currentClearanceAboveSupport = 0f;
+                    isMoldSuspended = false;
+                }
+
+                moldBounds = GetMoldBoundsWorld();
+                float minRingY = moldBounds.max.y + restingRingHeightAboveTop * 0.85f;
+                if (ringCenterPos.y < minRingY)
+                    ringCenterPos.y = minRingY;
+
+                centralRing.SetPositionAndRotation(ringCenterPos, uprightRingRot);
+            }
+            else
+            {
+                isChainTaut = false;
+                isMoldSuspended = false;
+                currentTautness = 0f;
+                currentClearanceAboveSupport = 0f;
+
+                if (chainsRoot != null && chainsRoot != centralRing)
+                    chainsRoot.position = new Vector3(moldBounds.center.x, moldRoot.position.y, moldBounds.center.z);
+
+                Vector3 restRingPos = new Vector3(moldBounds.center.x, moldBounds.max.y + restingRingHeightAboveTop, moldBounds.center.z);
+                centralRing.SetPositionAndRotation(restRingPos, uprightRingRot);
+            }
+
+            // Recompute live mould bounds after any position update and pose the 2 U-loop chains around the mould
+            moldBounds = GetMoldBoundsWorld();
+            PoseWrappedChainLoops(moldBounds);
+        }
+
+        private void PoseWrappedChainLoops(Bounds moldBounds)
+        {
+            if (!_linksCached)
+                CacheChainLegLinks();
+
+            float sagAmount = Mathf.Lerp(maxRestingSagMeters, 0f, currentTautness);
+
+            // Station 0 (Left end of mould): Chain_1_U wraps around X = moldBounds.center.x - wrapStationHalfSpanX
+            float leftStationX = moldBounds.center.x - wrapStationHalfSpanX;
+            PoseSingleULoop(
+                _chain1Links,
+                centralRing.TransformPoint(ringLegLocalOffsets[0]), // FL on Ring
+                centralRing.TransformPoint(ringLegLocalOffsets[1]), // BL on Ring
+                leftStationX,
+                moldBounds,
+                sagAmount,
+                IsLeftLoopSocketed,
+                leftBottomEdgeSocket,
+                chain1LoopGrab);
+
+            // Station 1 (Right end of mould): Chain_2_U wraps around X = moldBounds.center.x + wrapStationHalfSpanX
+            float rightStationX = moldBounds.center.x + wrapStationHalfSpanX;
+            PoseSingleULoop(
+                _chain2Links,
+                centralRing.TransformPoint(ringLegLocalOffsets[2]), // FR on Ring
+                centralRing.TransformPoint(ringLegLocalOffsets[3]), // BR on Ring
+                rightStationX,
+                moldBounds,
+                sagAmount,
+                IsRightLoopSocketed,
+                rightBottomEdgeSocket,
+                chain2LoopGrab);
+        }
+
+        private void PoseSingleULoop(
+            List<Transform> links,
+            Vector3 ringFrontAttach,
+            Vector3 ringBackAttach,
+            float stationX,
+            Bounds moldBounds,
+            float sagAmount,
+            bool isSocketed,
+            XRSocketInteractor bottomSocket,
+            XRGrabInteractable loopHandle)
+        {
+            if (links == null || links.Count < 16)
+                return;
+
+            int count = links.Count; // 81 links
+            int nFree = Mathf.Clamp(freeLinksPerLeg, 8, count / 4); // 13 links for front upper leg, 13 links for back upper leg
+            int wrapStart = nFree;                 // index 13
+            int wrapEnd = count - 1 - nFree;       // index 67 (55 wrapped links: 13..67)
+
+            float frontZ = moldBounds.max.z + chainSurfaceClearance; // Front face (+Z)
+            float backZ  = moldBounds.min.z - chainSurfaceClearance; // Back face (-Z)
+            float topY   = moldBounds.max.y + chainSurfaceClearance * 0.5f; // Top corner Y (~0.987m)
+            float botY   = moldBounds.min.y + 0.008f; // Bottom edge of PalletBase (~0.104m)
+
+            // 4 corner waypoints around the cross-section of the mould at X = stationX:
+            // Top-Front -> Bottom-Front Edge -> Bottom-Back Edge (under the mould) -> Top-Back
+            Vector3 topFrontCorner = new Vector3(stationX, topY, frontZ);
+            Vector3 botFrontEdge   = new Vector3(stationX, botY, frontZ);
+            Vector3 botBackEdge    = new Vector3(stationX, botY, backZ);
+            Vector3 topBackCorner  = new Vector3(stationX, topY, backZ);
+            Vector3 botUnderCenter = new Vector3(stationX, botY, moldBounds.center.z);
+
+            // Keep the bottom-edge socket positioned at the bottom-edge midpoint of this station
+            if (bottomSocket != null && !Application.isPlaying)
+            {
+                bottomSocket.transform.SetPositionAndRotation(botUnderCenter, Quaternion.identity);
+            }
+            if (loopHandle != null && (!Application.isPlaying || (!loopHandle.isSelected && isSocketed)))
+            {
+                loopHandle.transform.SetPositionAndRotation(botUnderCenter, Quaternion.identity);
+            }
+
+            Vector3[] positions = new Vector3[count];
+
+            if (!isSocketed && loopHandle != null)
+            {
+                // If the operator pulled the chain loop out of the bottom-edge socket, hang from the ring to the handle
+                Vector3 handTarget = loopHandle.transform.position;
+                int mid = count / 2;
+                for (int i = 0; i <= mid; i++)
+                {
+                    float u = (float)i / mid;
+                    positions[i] = Vector3.Lerp(ringFrontAttach, handTarget, u) - Vector3.up * (4f * u * (1f - u) * 0.08f);
+                }
+                for (int i = mid + 1; i < count; i++)
+                {
+                    float u = (float)(i - mid) / (count - 1 - mid);
+                    positions[i] = Vector3.Lerp(handTarget, ringBackAttach, u) - Vector3.up * (4f * u * (1f - u) * 0.08f);
+                }
+            }
+            else
+            {
+                // 1. Front upper leg (Ring -> Top-Front corner of mould): indices 0 .. wrapStart
+                for (int i = 0; i <= wrapStart; i++)
+                {
+                    float u = (float)i / wrapStart;
+                    float sag = 4f * u * (1f - u) * sagAmount;
+                    positions[i] = Vector3.Lerp(ringFrontAttach, topFrontCorner, u) - Vector3.up * sag;
+                }
+
+                // 2. Wrapped section around the mould sides and bottom edges:
+                //    Top-Front -> Bottom-Front Edge -> across underside -> Bottom-Back Edge -> Top-Back
+                float lenFrontSide = Vector3.Distance(topFrontCorner, botFrontEdge);
+                float lenBottom    = Vector3.Distance(botFrontEdge, botBackEdge);
+                float lenBackSide  = Vector3.Distance(botBackEdge, topBackCorner);
+                float totalWrapLen = lenFrontSide + lenBottom + lenBackSide;
+                int wrapSegments   = wrapEnd - wrapStart;
+
+                for (int i = wrapStart; i <= wrapEnd; i++)
+                {
+                    float d = ((float)(i - wrapStart) / wrapSegments) * totalWrapLen;
+                    if (d <= lenFrontSide)
+                    {
+                        float t = lenFrontSide > 1e-5f ? d / lenFrontSide : 0f;
+                        positions[i] = Vector3.Lerp(topFrontCorner, botFrontEdge, t);
+                    }
+                    else if (d <= lenFrontSide + lenBottom)
+                    {
+                        float t = lenBottom > 1e-5f ? (d - lenFrontSide) / lenBottom : 0f;
+                        positions[i] = Vector3.Lerp(botFrontEdge, botBackEdge, t);
+                    }
+                    else
+                    {
+                        float t = lenBackSide > 1e-5f ? (d - lenFrontSide - lenBottom) / lenBackSide : 1f;
+                        positions[i] = Vector3.Lerp(botBackEdge, topBackCorner, t);
+                    }
+                }
+
+                // 3. Back upper leg (Top-Back corner of mould -> Ring): indices wrapEnd .. count - 1
+                int backCount = (count - 1) - wrapEnd;
+                for (int i = wrapEnd; i < count; i++)
+                {
+                    float u = (float)(i - wrapEnd) / backCount;
+                    float sag = 4f * u * (1f - u) * sagAmount;
+                    positions[i] = Vector3.Lerp(topBackCorner, ringBackAttach, u) - Vector3.up * sag;
+                }
+            }
+
+            // Apply positions and alternating 90-degree interlocking link rotations along the continuous loop tangent
+            for (int i = 0; i < count; i++)
+            {
+                Transform linkTf = links[i];
+                if (linkTf == null) continue;
+
+                Vector3 prevPos = i > 0 ? positions[i - 1] : positions[i];
+                Vector3 nextPos = i < count - 1 ? positions[i + 1] : positions[i];
+                Vector3 tangent = (prevPos - nextPos).sqrMagnitude > 1e-6f
+                    ? (prevPos - nextPos).normalized
+                    : Vector3.up;
+
+                Vector3 sideRef = Vector3.Cross(tangent, Vector3.right);
+                if (sideRef.sqrMagnitude < 1e-4f)
+                    sideRef = Vector3.Cross(tangent, Vector3.forward);
+                sideRef.Normalize();
+
+                Quaternion baseRot = Quaternion.LookRotation(tangent, sideRef);
+                float rollAngle = (i % 2 == 0) ? 0f : 90f;
+                linkTf.SetPositionAndRotation(positions[i], baseRot * Quaternion.Euler(0f, 0f, rollAngle));
+            }
+        }
+
+        private Bounds GetMoldBoundsWorld()
+        {
+            Vector3 basePos = moldRoot != null ? moldRoot.position : new Vector3(-22.54f, 0.0962f, -5.46f);
+            // Exact assembled envelope of the mould body (PalletBase bottom y=basePos.y to LongWall top y=basePos.y+0.8828m,
+            // width X=1.32m across walls, depth Z=0.693m from back wall -5.807 to front wall -5.114).
+            Vector3 center = new Vector3(basePos.x, basePos.y + 0.4414f, basePos.z);
+            Vector3 size = new Vector3(1.26f, 0.8828f, 0.6935f);
+            return new Bounds(center, size);
+        }
+
+        private void SyncInstalledMoldPartsPhysics()
+        {
+            if (!Application.isPlaying)
+                return;
+
+            Physics.SyncTransforms();
+
+            var couplers = moldRoot.GetComponentsInChildren<MoldVibroPlatformCoupler>(true);
+            for (int i = 0; i < couplers.Length; i++)
+            {
+                if (couplers[i] != null)
+                    couplers[i].SetRestWorldPose(couplers[i].transform.position, couplers[i].transform.rotation);
+            }
+        }
+
+        private float GetRingWorldScale()
+        {
+            if (centralRing == null) return 0.64f;
+            return Mathf.Abs(centralRing.lossyScale.z);
+        }
+
+        public float SampleSupportSurfaceY(Vector3 worldXZ)
+        {
+            float rayStartY = (moldRoot != null ? moldRoot.position.y : 0.1f) + 0.45f;
+            Vector3 origin = new Vector3(worldXZ.x, rayStartY, worldXZ.z);
+            RaycastHit[] hits = Physics.RaycastAll(origin, Vector3.down, 10f, ~0, QueryTriggerInteraction.Ignore);
+            Array.Sort(hits, (a, b) => a.distance.CompareTo(b.distance));
+
+            for (int i = 0; i < hits.Length; i++)
+            {
+                Collider col = hits[i].collider;
+                if (col == null) continue;
+                if (moldRoot != null && col.transform.IsChildOf(moldRoot)) continue;
+                if (chainsRoot != null && col.transform.IsChildOf(chainsRoot)) continue;
+                if (currentHookMount != null && col.transform.IsChildOf(currentHookMount)) continue;
+                if (col.name.Contains("RatchetBelt") || (col.transform.root != null && col.transform.root.name.Contains("RatchetBelt")))
+                    continue;
+
+                return Mathf.Max(minGroundY, hits[i].point.y);
+            }
+
+            return minGroundY;
+        }
+    }
+}

@@ -1,0 +1,462 @@
+using UnityEngine;
+using System.Collections.Generic;
+
+namespace Sefpro.RatchetBelt
+{
+    /// <summary>
+    /// Generates and dynamically updates a physically accurate, non-deforming industrial webbing ribbon
+    /// routed around the casting mold to reproduce the authentic mould-locking procedure from the reference video.
+    /// Strictly guarantees constant strap width (50 mm) and thickness (2.2 mm) with zero Poisson thinning,
+    /// follows the mould's outer geometry (up the left face, across the top contact surfaces, down the right face),
+    /// displays visible catenary sag during loose setup, conforms tightly when slack is pulled and ratcheted,
+    /// and renders the loose tail exiting the mandrel spindle.
+    /// </summary>
+    [ExecuteAlways]
+    [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer))]
+    public class RatchetWebbingRibbonRenderer : MonoBehaviour
+    {
+        [Header("Key Anchors & References")]
+        public Transform mandrelExitTransform;
+        public Transform adjustableHookTransform;
+        public Transform moldTransform;
+        public RatchetBeltMechanicsController mechanicsController;
+
+        [Header("Physical Strap Dimensions")]
+        [Tooltip("Webbing strap width in meters (50 mm = 0.050 m).")]
+        public float strapWidth = 0.050f;
+
+        [Tooltip("Webbing strap thickness in meters (2.4 mm = 0.0024 m).")]
+        public float strapThickness = 0.0024f;
+
+        [Header("Mold Geometry Clearance (World Space)")]
+        public float centerX = -22.540f;
+        public float moldNearZ = -5.784f;
+        public float moldFarZ = -5.136f;
+        public float moldTopY = 0.446f;
+        public float moldBottomY = 0.100f;
+
+        [Header("Slack & Tail Visuals")]
+        [Tooltip("Render the loose webbing tail exiting the mandrel spindle.")]
+        public bool renderLooseTail = true;
+
+        private Mesh mesh;
+        private MeshFilter meshFilter;
+        private MeshRenderer meshRenderer;
+
+        private void Awake()
+        {
+            EnsureMeshInitialized();
+        }
+
+        private void OnEnable()
+        {
+            EnsureMeshInitialized();
+        }
+
+        private void EnsureMeshInitialized()
+        {
+            if (meshFilter == null)
+                meshFilter = GetComponent<MeshFilter>();
+            if (meshRenderer == null)
+                meshRenderer = GetComponent<MeshRenderer>();
+
+            if (mesh == null)
+            {
+                mesh = new Mesh { name = "Dynamic_Mould_Locking_Webbing_Ribbon" };
+                mesh.MarkDynamic();
+            }
+
+            if (meshFilter != null && meshFilter.sharedMesh != mesh)
+            {
+                meshFilter.sharedMesh = mesh;
+            }
+        }
+
+        private void LateUpdate()
+        {
+            UpdateRibbonGeometry();
+        }
+
+        /// <summary>
+        /// Authoritative ribbon mesh generation based on the state in RatchetBeltMechanicsController.
+        /// </summary>
+        public void UpdateRibbonGeometry()
+        {
+            EnsureMeshInitialized();
+
+            strapThickness = 0.0024f;
+            strapWidth = 0.050f;
+
+            if (mandrelExitTransform == null || adjustableHookTransform == null)
+            {
+                AutoFindReferences();
+                if (mandrelExitTransform == null || adjustableHookTransform == null) return;
+            }
+
+            // Sync mold dimensions if mold transform exists
+            if (moldTransform != null)
+            {
+                centerX = moldTransform.position.x;
+                moldNearZ = moldTransform.position.z - 0.324f;
+                moldFarZ = moldTransform.position.z + 0.324f;
+                moldTopY = moldTransform.position.y + 0.346f;
+                moldBottomY = moldTransform.position.y;
+            }
+
+            // Query authoritative state from mechanicsController
+            float slack = 0.0f;
+            float tension = 1.0f;
+            int strokes = 4;
+            bool isAdjHookAttached = true;
+
+            if (mechanicsController != null)
+            {
+                slack = mechanicsController.SlackMeters;
+                tension = mechanicsController.Tension;
+                strokes = mechanicsController.CompletedStrokes;
+                isAdjHookAttached = mechanicsController.IsAdjHookAttached;
+            }
+
+            // Maintain alignment along this belt's track X (Front-to-Back arrangement along Z)
+            float trackX = transform.position.x;
+            Vector3 pHook = adjustableHookTransform.position;
+            pHook.x = trackX;
+
+            // 1. Spool & Mandrel Geometry:
+            // Mandrel rotation centre: Z = -5.9100m, Y = 0.3780m (Never use Anchor_MandrelExit as tangent origin)
+            float mandrelCenterZ = -5.9100f;
+            float mandrelCenterY = 0.3780f;
+            if (mandrelExitTransform != null && !mandrelExitTransform.name.Contains("Anchor"))
+            {
+                mandrelCenterZ = mandrelExitTransform.position.z;
+                mandrelCenterY = mandrelExitTransform.position.y;
+            }
+
+            // Calibrated spool radius progression: 10.0 mm at stroke 0 to 14.4 mm at stroke 4
+            float spoolRadius = 0.0100f;
+            if (mechanicsController != null)
+            {
+                spoolRadius = mechanicsController.CurrentSpoolRadius;
+            }
+            else
+            {
+                spoolRadius = Mathf.Lerp(0.0100f, 0.0144f, strokes / 4.0f);
+            }
+
+            // Mould far and near outer rim coordinates
+            float moldCenterZ = moldTransform != null ? moldTransform.position.z : -5.4600f;
+            float moldFarRimOuterZ = moldCenterZ - 0.3456f;   // -5.8056m (mould far outer rim lip)
+            float moldNearRimOuterZ = moldCenterZ + 0.3456f;  // -5.1144m (mould near outer rim lip)
+            float moldRimTopY = moldTopY + strapThickness * 0.5f + 0.0055f; // ~0.4526m (clearance above 0.4456m rim)
+
+            // 2. Dynamic Tangent Origin Calculation:
+            // Circle-to-point tangent from spool cylinder (center C, radius R) to mould rim target (apexFar)
+            Vector2 centerC = new Vector2(mandrelCenterZ, mandrelCenterY);
+            Vector2 apexFar = new Vector2(moldFarRimOuterZ, moldRimTopY);
+            Vector2 vToTarget = apexFar - centerC;
+            float distToTarget = vToTarget.magnitude;
+
+            Vector3 pStart = new Vector3(trackX, mandrelCenterY, mandrelCenterZ);
+            if (distToTarget > spoolRadius)
+            {
+                float alpha = Mathf.Atan2(vToTarget.y, vToTarget.x);
+                float beta = Mathf.Acos(Mathf.Clamp(spoolRadius / distToTarget, -1f, 1f));
+                // Upper tangent departure solution: departs from top of spool roll heading to mould,
+                // passing ~40mm above the front crossbar and chassis floor with zero gap or penetration
+                float thetaTan = alpha + beta;
+                float tanZ = centerC.x + spoolRadius * Mathf.Cos(thetaTan);
+                float tanY = centerC.y + spoolRadius * Mathf.Sin(thetaTan);
+                pStart = new Vector3(trackX, tanY, tanZ);
+            }
+
+            // Generate clean, physically accurate webbing waypoints across the casting mould along the Z axis.
+            List<Vector3> mainWaypoints = new List<Vector3>();
+
+            Vector2 pStart2 = new Vector2(pStart.z, pStart.y);
+            Vector2 pHook2 = new Vector2(pHook.z, pHook.y);
+            Vector2 apexNear = new Vector2(moldNearRimOuterZ, moldRimTopY);
+
+            Vector2 dIn = (apexFar - pStart2).normalized;
+            Vector2 dTop = Vector2.right; // Along world +Z in (Z, Y) space
+            Vector2 dOut = (pHook2 - apexNear).normalized;
+
+            // Far corner transition: smooth fillet from incoming incline to horizontal top rim
+            float angleTurnFar = Vector2.Angle(dIn, dTop);
+            float radiusFar = 0.015f;
+            float lTanFar = radiusFar * Mathf.Tan(angleTurnFar * 0.5f * Mathf.Deg2Rad);
+            Vector2 centerFar = new Vector2(moldFarRimOuterZ - lTanFar, moldRimTopY - radiusFar);
+            Vector2 tFar1 = centerFar + new Vector2(Mathf.Cos((90f + angleTurnFar) * Mathf.Deg2Rad), Mathf.Sin((90f + angleTurnFar) * Mathf.Deg2Rad)) * radiusFar;
+            Vector2 tFar2 = new Vector2(moldFarRimOuterZ, moldRimTopY);
+
+            // Near corner transition: smooth fillet from horizontal top rim down to near hook
+            float angleTurnNear = Vector2.Angle(dTop, dOut);
+            float radiusNear = 0.020f;
+            float lTanNear = radiusNear * Mathf.Tan(angleTurnNear * 0.5f * Mathf.Deg2Rad);
+            Vector2 tNear1 = new Vector2(moldNearRimOuterZ, moldRimTopY);
+            Vector2 centerNear = new Vector2(moldNearRimOuterZ + lTanNear, moldRimTopY - radiusNear);
+            Vector2 tNear2 = centerNear + new Vector2(Mathf.Cos((90f - angleTurnNear) * Mathf.Deg2Rad), Mathf.Sin((90f - angleTurnNear) * Mathf.Deg2Rad)) * radiusNear;
+
+            if (isAdjHookAttached || pHook.z >= moldNearRimOuterZ)
+            {
+                // Full route:
+                // 1. Dynamic Tangent Origin on Spool (updates continuously with spool radius)
+                mainWaypoints.Add(pStart);
+
+                // 2. Straight approach to mould far edge transition (bypassing front guide bar)
+                mainWaypoints.Add(new Vector3(trackX, tFar1.y, tFar1.x));
+
+                // 3. Smooth corner transition over far rim lip onto mould top (located outside rim lip)
+                int cornerSteps = 3;
+                for (int i = 1; i < cornerSteps; i++)
+                {
+                    float t = (float)i / cornerSteps;
+                    float ang = Mathf.Lerp(90f + angleTurnFar, 90f, t) * Mathf.Deg2Rad;
+                    Vector2 p = centerFar + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * radiusFar;
+                    mainWaypoints.Add(new Vector3(trackX, p.y, p.x));
+                }
+                mainWaypoints.Add(new Vector3(trackX, moldRimTopY, moldFarRimOuterZ));
+
+                // 4. Straight span across mould top rim (constant Y >= 5.0mm clearance)
+                mainWaypoints.Add(new Vector3(trackX, moldRimTopY, (moldFarRimOuterZ + moldNearRimOuterZ) * 0.5f));
+                mainWaypoints.Add(new Vector3(trackX, moldRimTopY, moldNearRimOuterZ));
+
+                // 5. Smooth corner transition over near rim lip down toward near hook (located outside rim lip)
+                for (int i = 1; i < cornerSteps; i++)
+                {
+                    float t = (float)i / cornerSteps;
+                    float ang = Mathf.Lerp(90f, 90f - angleTurnNear, t) * Mathf.Deg2Rad;
+                    Vector2 p = centerNear + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * radiusNear;
+                    mainWaypoints.Add(new Vector3(trackX, p.y, p.x));
+                }
+                mainWaypoints.Add(new Vector3(trackX, tNear2.y, tNear2.x));
+
+                // 6. Straight span down to near J-hook eyelet
+                mainWaypoints.Add(pHook);
+            }
+            else if (pHook.z > moldFarRimOuterZ)
+            {
+                // Partially dragged across the mould
+                mainWaypoints.Add(pStart);
+                mainWaypoints.Add(new Vector3(trackX, tFar1.y, tFar1.x));
+                int cornerSteps = 3;
+                for (int i = 1; i < cornerSteps; i++)
+                {
+                    float t = (float)i / cornerSteps;
+                    float ang = Mathf.Lerp(90f + angleTurnFar, 90f, t) * Mathf.Deg2Rad;
+                    Vector2 p = centerFar + new Vector2(Mathf.Cos(ang), Mathf.Sin(ang)) * radiusFar;
+                    mainWaypoints.Add(new Vector3(trackX, p.y, p.x));
+                }
+                mainWaypoints.Add(new Vector3(trackX, moldRimTopY, moldFarRimOuterZ));
+                mainWaypoints.Add(new Vector3(trackX, moldRimTopY, pHook.z));
+            }
+            else
+            {
+                // Hook is on the far side: straight line from dynamic tangent to hook
+                mainWaypoints.Add(pStart);
+                mainWaypoints.Add(pHook);
+            }
+
+            // 3. Mandrel Slot & Loose Tail Geometry:
+            // Slot top: Y = 0.3879 m, Slot bottom: Y = 0.3681 m, Center: Y = 0.3780 m, Z = -5.9100 m
+            // The tail passes through the slot and drapes behind the mandrel, retracting smoothly as strokes advance
+            List<Vector3> tailWaypoints = null;
+            if (renderLooseTail)
+            {
+                tailWaypoints = new List<Vector3>();
+
+                float progress = mechanicsController != null ? mechanicsController.CurrentProgress : (strokes / 4.0f);
+                // Tail length: 45mm at stroke 0, retracting by ~10mm per stroke down to 5mm at stroke 4
+                float tailLength = Mathf.Lerp(0.045f, 0.005f, progress);
+
+                // Slot entry (front side of mandrel slot)
+                Vector3 pSlotFront = new Vector3(trackX, mandrelCenterY, mandrelCenterZ + 0.005f);
+                // Slot exit (rear side of mandrel slot, Z = -5.9200 m)
+                Vector3 pSlotRear = new Vector3(trackX, mandrelCenterY, mandrelCenterZ - 0.010f);
+                // Drape point behind mandrel (smooth path above frame deck)
+                Vector3 pDrape1 = new Vector3(trackX, mandrelCenterY - 0.005f, mandrelCenterZ - 0.020f);
+                // Free end tip (safely maintains > 11 mm clearance above chassis deck Y = 0.3500 m at all strokes)
+                float tipY = Mathf.Max(0.3600f, pDrape1.y - tailLength * 0.20f);
+                Vector3 pTip = new Vector3(trackX, tipY, pDrape1.z - tailLength * 0.85f);
+
+                tailWaypoints.Add(pSlotFront);
+                tailWaypoints.Add(pSlotRear);
+                if (tailLength > 0.015f)
+                {
+                    tailWaypoints.Add(pDrape1);
+                    tailWaypoints.Add(pTip);
+                }
+                else
+                {
+                    tailWaypoints.Add(pDrape1);
+                }
+            }
+
+            // Build extruded 3D ribbon mesh
+            BuildExtrudedRibbonMesh(mainWaypoints, tailWaypoints);
+        }
+
+        private void AutoFindReferences()
+        {
+            if (mandrelExitTransform == null)
+            {
+                var mandrel = transform.parent != null ? transform.parent.Find("Mandrel") : null;
+                if (mandrel == null) mandrel = GameObject.Find("Mandrel")?.transform;
+                if (mandrel != null) mandrelExitTransform = mandrel;
+            }
+
+            if (adjustableHookTransform == null)
+            {
+                var hook = transform.parent != null ? transform.parent.Find("J_Hook_Adjustable") : null;
+                if (hook == null) hook = GameObject.Find("J_Hook_Adjustable")?.transform;
+                if (hook != null) adjustableHookTransform = hook;
+            }
+
+            if (mechanicsController == null)
+            {
+                mechanicsController = GetComponentInParent<RatchetBeltMechanicsController>();
+                if (mechanicsController == null) mechanicsController = FindAnyObjectByType<RatchetBeltMechanicsController>();
+            }
+
+            var moldGo = GameObject.Find("CastingMold");
+            if (moldGo != null)
+            {
+                moldTransform = moldGo.transform;
+                centerX = moldTransform.position.x;
+                moldNearZ = moldTransform.position.z - 0.324f;
+                moldFarZ = moldTransform.position.z + 0.324f;
+                moldTopY = moldTransform.position.y + 0.346f;
+                moldBottomY = moldTransform.position.y;
+            }
+        }
+
+        private void BuildExtrudedRibbonMesh(List<Vector3> mainPoints, List<Vector3> tailPoints)
+        {
+            if (mainPoints == null || mainPoints.Count < 2) return;
+
+            List<Vector3> verts = new List<Vector3>();
+            List<Vector3> norms = new List<Vector3>();
+            List<Vector2> uvs = new List<Vector2>();
+            List<int> tris = new List<int>();
+
+            // Extrude main strap ribbon (binormal along -X, normal UP along +Y when tangent is +Z)
+            ExtrudeRibbonStrip(mainPoints, verts, norms, uvs, tris, 0f, new Vector3(-1f, 0f, 0f));
+
+            // Extrude tail ribbon if present (binormal along -X, draping down in -Z/-Y)
+            if (tailPoints != null && tailPoints.Count >= 2)
+            {
+                ExtrudeRibbonStrip(tailPoints, verts, norms, uvs, tris, 5.0f, new Vector3(-1f, 0f, 0f));
+            }
+
+            mesh.Clear();
+            mesh.SetVertices(verts);
+            mesh.SetNormals(norms);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(tris, 0);
+            mesh.RecalculateBounds();
+        }
+
+        private void ExtrudeRibbonStrip(List<Vector3> points, List<Vector3> verts, List<Vector3> norms, List<Vector2> uvs, List<int> tris, float initialV, Vector3 worldBinormal)
+        {
+            // Remove coincident or near-zero segments
+            List<Vector3> cleanPoints = new List<Vector3>();
+            cleanPoints.Add(points[0]);
+            for (int i = 1; i < points.Count; i++)
+            {
+                if (Vector3.Distance(points[i], cleanPoints[cleanPoints.Count - 1]) > 0.002f)
+                {
+                    cleanPoints.Add(points[i]);
+                }
+            }
+            if (cleanPoints.Count < 2) return;
+
+            float halfWidth = strapWidth * 0.5f;       // 0.025 m (50 mm total width)
+            float halfThick = strapThickness * 0.5f;   // 0.0011 m (2.2 mm total thickness)
+            float totalLen = initialV;
+
+            int numPoints = cleanPoints.Count;
+            int startVertexIndex = verts.Count;
+
+            for (int i = 0; i < numPoints; i++)
+            {
+                Vector3 cur = cleanPoints[i];
+                Vector3 tangent;
+
+                if (i == 0)
+                {
+                    tangent = (cleanPoints[1] - cur).normalized;
+                }
+                else if (i == numPoints - 1)
+                {
+                    tangent = (cur - cleanPoints[i - 1]).normalized;
+                }
+                else
+                {
+                    tangent = ((cur - cleanPoints[i - 1]).normalized + (cleanPoints[i + 1] - cur).normalized).normalized;
+                }
+
+                if (tangent.sqrMagnitude < 0.0001f) tangent = Vector3.forward;
+                else tangent.Normalize();
+
+                // Compute normal perpendicular to both binormal and tangent
+                Vector3 worldNormal = Vector3.Cross(worldBinormal, tangent).normalized;
+                if (worldNormal.sqrMagnitude < 0.0001f) worldNormal = Vector3.up;
+
+                if (i > 0)
+                {
+                    totalLen += Vector3.Distance(cleanPoints[i], cleanPoints[i - 1]);
+                }
+                float v = totalLen * 18.0f;
+
+                // 4 corners of cross section (width across binormal, thickness across normal)
+                Vector3 w0 = cur - worldBinormal * halfWidth + worldNormal * halfThick;
+                Vector3 w1 = cur + worldBinormal * halfWidth + worldNormal * halfThick;
+                Vector3 w2 = cur + worldBinormal * halfWidth - worldNormal * halfThick;
+                Vector3 w3 = cur - worldBinormal * halfWidth - worldNormal * halfThick;
+
+                int baseIdx = verts.Count;
+                verts.Add(transform.InverseTransformPoint(w0));
+                verts.Add(transform.InverseTransformPoint(w1));
+                verts.Add(transform.InverseTransformPoint(w2));
+                verts.Add(transform.InverseTransformPoint(w3));
+
+                Vector3 lNormal = transform.InverseTransformDirection(worldNormal);
+
+                norms.Add(lNormal);
+                norms.Add(lNormal);
+                norms.Add(-lNormal);
+                norms.Add(-lNormal);
+
+                uvs.Add(new Vector2(0f, v));
+                uvs.Add(new Vector2(1f, v));
+                uvs.Add(new Vector2(1f, v));
+                uvs.Add(new Vector2(0f, v));
+
+                if (i > 0)
+                {
+                    int prev = baseIdx - 4;
+                    // Top face
+                    AddQuad(tris, prev + 0, prev + 1, baseIdx + 1, baseIdx + 0);
+                    // Bottom face
+                    AddQuad(tris, prev + 3, baseIdx + 3, baseIdx + 2, prev + 2);
+                    // Front edge
+                    AddQuad(tris, prev + 1, baseIdx + 1, baseIdx + 2, prev + 2);
+                    // Back edge
+                    AddQuad(tris, prev + 3, baseIdx + 3, baseIdx + 0, prev + 0);
+                }
+            }
+
+            // Start Cap
+            AddQuad(tris, startVertexIndex + 0, startVertexIndex + 3, startVertexIndex + 2, startVertexIndex + 1);
+
+            // End Cap
+            int lastBase = verts.Count - 4;
+            AddQuad(tris, lastBase + 0, lastBase + 1, lastBase + 2, lastBase + 3);
+        }
+
+        private static void AddQuad(List<int> tris, int i0, int i1, int i2, int i3)
+        {
+            tris.Add(i0); tris.Add(i1); tris.Add(i2);
+            tris.Add(i0); tris.Add(i2); tris.Add(i3);
+        }
+    }
+}

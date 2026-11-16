@@ -1,0 +1,110 @@
+using UnityEngine;
+
+/// <summary>
+/// SEFPRO — Vibration Dust Effect (Phase 2B)
+/// Drives two wing-mounted ParticleSystems in response to the vibration knob's selected level.
+/// Reads XRSteppedKnob.StepLevel each frame; does not modify VibroEffect or XRSteppedKnob.
+/// </summary>
+[ExecuteAlways]
+[RequireComponent(typeof(ParticleSystem))]
+public class VibrationParticleController : MonoBehaviour
+{
+    [Header("Knob Reference")]
+    [Tooltip("The Main_Vibration_Frequency_Knob XRSteppedKnob component.")]
+    [SerializeField] private XRSteppedKnob _knob;
+
+    [Header("Particle Systems")]
+    [Tooltip("Left wing ParticleSystem (this GameObject). Assigned automatically on Awake.")]
+    [SerializeField] private ParticleSystem _leftWingPS;
+    [Tooltip("Right wing ParticleSystem — VibrationDust_Right.")]
+    [SerializeField] private ParticleSystem _rightWingPS;
+
+    [Header("Emission Settings")]
+    [Tooltip("Emission rate per particle system at each knob level (index = level).")]
+    [SerializeField] private float[] _emissionRates = { 0f, 8f, 18f, 30f, 44f };
+    [Tooltip("Maximum rate of change for emission transitions (particles/sec^2).")]
+    [SerializeField] private float _slewRate = 50f;
+
+    [Header("Runtime State")]
+    [SerializeField] private float _currentRate = 0f;
+
+    public float CurrentRate => _currentRate;
+
+    // -------------------------------------------------------------------------
+
+    private void Awake()
+    {
+        if (_leftWingPS == null)
+            _leftWingPS = GetComponent<ParticleSystem>();
+    }
+
+    private void Start()
+    {
+        EnsurePlaying(_leftWingPS);
+        EnsurePlaying(_rightWingPS);
+        ApplyRate(_currentRate);
+    }
+
+    private void OnEnable()
+    {
+        EnsurePlaying(_leftWingPS);
+        EnsurePlaying(_rightWingPS);
+    }
+
+    private void Update()
+    {
+        int level = ResolveLevel();
+        float targetRate = ResolveTargetRate(level);
+
+        float dt = Application.isPlaying ? Time.deltaTime : 0.016f;
+        _currentRate = Mathf.MoveTowards(_currentRate, targetRate, _slewRate * dt);
+        ApplyRate(_currentRate);
+    }
+
+    // -------------------------------------------------------------------------
+    // Private helpers
+    // -------------------------------------------------------------------------
+
+    private int ResolveLevel()
+    {
+        if (_knob == null) return 0;
+        return Mathf.Clamp(_knob.StepLevel, 0, _emissionRates.Length - 1);
+    }
+
+    private float ResolveTargetRate(int level)
+    {
+        if (_emissionRates == null || _emissionRates.Length == 0) return 0f;
+        return _emissionRates[Mathf.Clamp(level, 0, _emissionRates.Length - 1)];
+    }
+
+    private void ApplyRate(float rate)
+    {
+        SetRate(_leftWingPS, rate);
+        SetRate(_rightWingPS, rate);
+    }
+
+    private static void EnsurePlaying(ParticleSystem ps)
+    {
+        if (ps == null) return;
+        if (!ps.isPlaying)
+            ps.Play();
+    }
+
+    /// <summary>
+    /// Sets rateOverTime on the given ParticleSystem.
+    /// At rate == 0, emission is zeroed but existing particles are allowed to
+    /// expire naturally (the system is NOT stopped or cleared).
+    /// </summary>
+    private static void SetRate(ParticleSystem ps, float rate)
+    {
+        if (ps == null) return;
+
+        var emission = ps.emission;
+        emission.enabled = true;
+        emission.rateOverTime = rate;
+
+        if (rate > 0f && !ps.isPlaying)
+            ps.Play();
+        // Intentionally no ps.Stop() — particles expire naturally at rate 0.
+    }
+}

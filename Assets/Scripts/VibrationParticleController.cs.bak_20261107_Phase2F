@@ -1,0 +1,183 @@
+using UnityEngine;
+
+/// <summary>
+/// SEFPRO — Vibration Dust Effect (Phase 2E: Dust Synchronization and Non-Uniform Distribution)
+/// Manages the primary non-uniform settled refractory dust overlay and drives the secondary
+/// fine-grain trembling and hopping particle systems synchronized directly with the
+/// physical movement of the vibrating platform surface.
+/// 
+/// Reads both XRSteppedKnob.StepLevel and the actual runtime transform velocity of
+/// Vibrating_Rubber_Surface. Does not modify VibroEffect or XRSteppedKnob.
+/// </summary>
+public class VibrationParticleController : MonoBehaviour
+{
+    [Header("Platform and Knob References")]
+    [Tooltip("The Main_Vibration_Frequency_Knob XRSteppedKnob component.")]
+    [SerializeField] private XRSteppedKnob _knob;
+    [Tooltip("The Vibrating_Rubber_Surface transform (the physically vibrating deck).")]
+    [SerializeField] private Transform _rubberTransform;
+
+    [Header("Settled Dust Overlay")]
+    [Tooltip("The primary settled refractory dust overlay GameObject.")]
+    [SerializeField] private GameObject _settledDustOverlay;
+
+    [Header("Secondary Grain Particle Systems")]
+    [Tooltip("Left wing grain ParticleSystem (VibrationDust_Left).")]
+    [SerializeField] private ParticleSystem _leftWingPS;
+    [Tooltip("Right wing grain ParticleSystem (VibrationDust_Right).")]
+    [SerializeField] private ParticleSystem _rightWingPS;
+
+    [Header("Secondary Grain Emission Settings")]
+    [Tooltip("Secondary hopping grain emission rate per wing (Level 0 = 0 p/s, settled only).")]
+    [SerializeField] private float[] _emissionRates = { 0f, 35f, 75f, 130f, 200f };
+    [Tooltip("Maximum rate of change for emission transitions (particles/sec^2).")]
+    [SerializeField] private float _slewRate = 80f;
+
+    [Header("Secondary Grain Agitation Settings")]
+    [Tooltip("Noise turbulence multiplier per level (Level 0 = 0).")]
+    [SerializeField] private float[] _noiseStrengths = { 0f, 0.03f, 0.06f, 0.10f, 0.16f };
+    [Tooltip("Maximum hop velocity Y per level (Level 0 = 0).")]
+    [SerializeField] private float[] _hopVelocitiesY = { 0f, 0.045f, 0.080f, 0.120f, 0.180f };
+
+    [Header("Runtime State")]
+    [SerializeField] private float _currentRate = 0f;
+    [SerializeField] private int _currentLevel = 0;
+    [SerializeField] private float _measuredSurfaceSpeed = 0f;
+    [SerializeField] private bool _isSurfaceMoving = false;
+
+    private Vector3 _previousRubberPos;
+    private float _smoothSurfaceSpeed;
+
+    public float CurrentRate => _currentRate;
+    public int CurrentLevel => _currentLevel;
+    public float MeasuredSurfaceSpeed => _measuredSurfaceSpeed;
+    public bool IsSurfaceMoving => _isSurfaceMoving;
+
+    // -------------------------------------------------------------------------
+
+    private void Awake()
+    {
+        AutoBind();
+    }
+
+    private void Start()
+    {
+        AutoBind();
+
+        if (_rubberTransform != null)
+            _previousRubberPos = _rubberTransform.position;
+
+        if (_settledDustOverlay != null)
+            _settledDustOverlay.SetActive(true);
+
+        _currentRate = 0f;
+        ApplyState(_currentRate, 0);
+    }
+
+    private void OnEnable()
+    {
+        if (_settledDustOverlay != null)
+            _settledDustOverlay.SetActive(true);
+    }
+
+    private void Update()
+    {
+        // Sample actual physical runtime motion of the rubber surface
+        float dt = Time.deltaTime;
+        if (dt > 0.0001f && _rubberTransform != null)
+        {
+            Vector3 currentPos = _rubberTransform.position;
+            float instantSpeed = Vector3.Distance(currentPos, _previousRubberPos) / dt;
+            _previousRubberPos = currentPos;
+
+            _smoothSurfaceSpeed = Mathf.Lerp(_smoothSurfaceSpeed, instantSpeed, 10f * dt);
+            _measuredSurfaceSpeed = _smoothSurfaceSpeed;
+            _isSurfaceMoving = _measuredSurfaceSpeed > 0.015f;
+        }
+
+        _currentLevel = ResolveLevel();
+
+        // Target emission is 0 if level is 0 or if surface is physically not vibrating
+        float targetRate = (_currentLevel > 0 && _isSurfaceMoving) ? ResolveTargetRate(_currentLevel) : 0f;
+
+        _currentRate = Mathf.MoveTowards(_currentRate, targetRate, _slewRate * dt);
+        ApplyState(_currentRate, _currentLevel);
+    }
+
+    // -------------------------------------------------------------------------
+    // Helpers
+    // -------------------------------------------------------------------------
+
+    public void AutoBind()
+    {
+        if (_knob == null)
+            _knob = FindAnyObjectByType<XRSteppedKnob>();
+
+        if (_rubberTransform == null)
+        {
+            var rubberGo = GameObject.Find("Vibrating_Rubber_Surface");
+            if (rubberGo != null) _rubberTransform = rubberGo.transform;
+        }
+
+        if (_settledDustOverlay == null)
+        {
+            var overlayGo = GameObject.Find("SettledDust_Overlay");
+            if (overlayGo != null) _settledDustOverlay = overlayGo;
+        }
+
+        if (_leftWingPS == null)
+        {
+            var leftGo = GameObject.Find("VibrationDust_Left");
+            if (leftGo != null) _leftWingPS = leftGo.GetComponent<ParticleSystem>();
+        }
+
+        if (_rightWingPS == null)
+        {
+            var rightGo = GameObject.Find("VibrationDust_Right");
+            if (rightGo != null) _rightWingPS = rightGo.GetComponent<ParticleSystem>();
+        }
+    }
+
+    private int ResolveLevel()
+    {
+        if (_knob == null) return 0;
+        return Mathf.Clamp(_knob.StepLevel, 0, _emissionRates.Length - 1);
+    }
+
+    private float ResolveTargetRate(int level)
+    {
+        if (_emissionRates == null || _emissionRates.Length == 0) return 0f;
+        return _emissionRates[Mathf.Clamp(level, 0, _emissionRates.Length - 1)];
+    }
+
+    private void ApplyState(float rate, int level)
+    {
+        int safeLvl = Mathf.Clamp(level, 0, _emissionRates.Length - 1);
+        float noise = _noiseStrengths != null && safeLvl < _noiseStrengths.Length ? _noiseStrengths[safeLvl] : 0.05f;
+        float hopVel = _hopVelocitiesY != null && safeLvl < _hopVelocitiesY.Length ? _hopVelocitiesY[safeLvl] : 0.06f;
+
+        UpdateSystem(_leftWingPS, rate, noise, hopVel);
+        UpdateSystem(_rightWingPS, rate, noise, hopVel);
+    }
+
+    private static void UpdateSystem(ParticleSystem ps, float rate, float noiseVal, float hopVel)
+    {
+        if (ps == null) return;
+
+        var emission = ps.emission;
+        emission.enabled = rate > 0.01f;
+        emission.rateOverTime = rate;
+
+        var noise = ps.noise;
+        noise.enabled = rate > 0.01f;
+        noise.strengthMultiplier = noiseVal;
+
+        var vel = ps.velocityOverLifetime;
+        vel.y = new ParticleSystem.MinMaxCurve(hopVel * 0.35f, hopVel);
+
+        if (rate > 0.01f && !ps.isPlaying)
+            ps.Play();
+        else if (rate <= 0.01f && ps.isPlaying)
+            ps.Stop();
+    }
+}

@@ -1,0 +1,18 @@
+fileFormatVersion: 2
+guid: afa8e434a11a01c4e9837acc8a3362ef
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences: []
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
+AssetOrigin:
+  serializedVersion: 1
+  productId: 190645
+  packageName: HQ Overhead Crane (Interactive)
+  packageVersion: 1.0
+  assetPath: Assets/NOT_Lonely/OverheadCrane/Scripts/NL_CablePoint.cs
+  uploadId: 420897
